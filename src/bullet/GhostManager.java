@@ -1,6 +1,5 @@
 package bullet;
 
-import java.io.IOException;
 import java.util.*;
 
 import org.joml.*;
@@ -17,8 +16,17 @@ public class GhostManager
         game = g;
     }
 
-    public void createGhost(UUID id, Vector3f pos) throws IOException
+    public void createGhost(UUID id, Vector3f pos)
     {
+        GhostAvatar existingGhost = findAvatar(id);
+        if (existingGhost != null)
+        {
+            // Treat duplicate create/details packets as a position refresh instead.
+            System.out.println("Ghost already exists: " + id);
+            existingGhost.setPosition(pos);
+            return;
+        }
+
         ObjShape s = game.getGhostShape();
         TextureImage t = game.getGhostTexture();
 
@@ -60,14 +68,16 @@ public class GhostManager
     public void updateGhostAvatar(UUID id, Vector3f pos)
     {
         GhostAvatar g = findAvatar(id);
-
         if (g != null)
         {
             g.setPosition(pos);
         }
         else
         {
-            System.out.println("Ghost not found for update");
+            // UDP packets can arrive out of order, so recover by creating the ghost
+            // from the first move we see.
+            System.out.println("Move arrived before create for ghost" + id + "; creating ghost from move packet.");
+            createGhost(id, pos);
         }
     }
 }

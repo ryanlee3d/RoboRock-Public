@@ -49,9 +49,11 @@ public class ProtocolClient extends GameConnectionClient
             }
 
             // CREATE or DETAILS
-            if (command.equals("create") || command.equals("dsfr"))
+            if (command.equals("create") || command.equals("ghostDetails"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
+                // Ignore our own replicated packets so we do not spawn a ghost for self.
+                if (ghostID.equals(id)) return;
 
                 Vector3f pos = new Vector3f(
                         Float.parseFloat(tokens[2]),
@@ -59,20 +61,15 @@ public class ProtocolClient extends GameConnectionClient
                         Float.parseFloat(tokens[4])
                 );
 
-                try
-                {
-                    ghostManager.createGhost(ghostID, pos);
-                }
-                catch (IOException e)
-                {
-                    e.printStackTrace();
-                }
+                ghostManager.createGhost(ghostID, pos);
             }
 
             // MOVE
             if (command.equals("move"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
+                // Ignore our own replicated packets so local movement remains authoritative.
+                if (ghostID.equals(id)) return;
 
                 Vector3f pos = new Vector3f(
                         Float.parseFloat(tokens[2]),
@@ -87,6 +84,8 @@ public class ProtocolClient extends GameConnectionClient
             if (command.equals("bye"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
+                // Ignore our own bye because the local avatar is not managed as a ghost.
+                if (ghostID.equals(id)) return;
                 ghostManager.removeGhostAvatar(ghostID);
             }
         }

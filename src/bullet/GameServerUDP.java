@@ -2,7 +2,10 @@ package bullet;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.Map;
 import java.util.UUID;
+
+import org.joml.Vector3f;
 
 import tage.networking.server.GameConnectionServer;
 import tage.networking.server.IClientInfo;
@@ -10,9 +13,13 @@ import tage.networking.IGameConnection.ProtocolType;
 
 public class GameServerUDP extends GameConnectionServer<UUID>
 {
+    // Tracks the latest known position for each connected client so late joiners
+    // can be sent ghosts for players who were already in the session.
+    private Map<UUID, Vector3f> clientPositions;
     public GameServerUDP(int localPort) throws IOException
     {
         super(localPort, ProtocolType.UDP);
+        clientPositions = new java.util.concurrent.ConcurrentHashMap<>();
         System.out.println("UDP server started on port " + localPort);
     }
 
@@ -36,6 +43,8 @@ public class GameServerUDP extends GameConnectionServer<UUID>
 
                     addClient(ci, clientID);
                     sendJoinedMessage(clientID, true);
+                    // Backfill any already-connected players to the newly joined client.
+                    sendDetailsMessages(clientID);
 
                     System.out.println("Client joined: " + clientID);
                 }
@@ -50,7 +59,8 @@ public class GameServerUDP extends GameConnectionServer<UUID>
             {
                 UUID clientID = UUID.fromString(msgTokens[1]);
                 String[] pos = { msgTokens[2], msgTokens[3], msgTokens[4] };
-
+                
+                storeClientPosition(clientID, pos);
                 sendCreateMessages(clientID, pos);
             }
 
@@ -60,6 +70,7 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 UUID clientID = UUID.fromString(msgTokens[1]);
                 String[] pos = { msgTokens[2], msgTokens[3], msgTokens[4] };
 
+                storeClientPosition(clientID, pos);
                 sendMoveMessages(clientID, pos);
             }
 
@@ -68,12 +79,22 @@ public class GameServerUDP extends GameConnectionServer<UUID>
             {
                 UUID clientID = UUID.fromString(msgTokens[1]);
 
+                clientPositions.remove(clientID);
                 sendByeMessages(clientID);
                 removeClient(clientID);
 
                 System.out.println("Client left: " + clientID);
             }
         }
+    }
+
+    private void storeClientPosition(UUID clientID, String[] pos)
+    {
+        clientPositions.put(clientID, new Vector3f(
+                Float.parseFloat(pos[0]),
+                Float.parseFloat(pos[1]),
+                Float.parseFloat(pos[2])
+        ));
     }
 
     public void sendJoinedMessage(UUID clientID, boolean success)
@@ -103,6 +124,32 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         catch (IOException e)
         {
             e.printStackTrace();
+        }
+    }
+
+    public void sendDetailsMessages(UUID clientID)
+    {
+        for (Map.Entry<UUID, Vector3f> entry : clientPositions.entrySet())
+        {
+            UUID remoteID = entry.getKey();
+            if (remoteID.equals(clientID))
+                continue;
+
+            Vector3f pos = entry.getValue();
+            try
+            {
+                // "GhostDetails" is used to handle ghosts that
+                // existed before this client joined.
+                String message = "GhostDetails," + remoteID +
+                        "," + pos.x() +
+                        "," + pos.y() +
+                        "," + pos.z();
+                sendPacket(message, clientID);
+            }
+            catch (IOException e)
+            {
+                e.printStackTrace();
+            }
         }
     }
 
