@@ -36,15 +36,31 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 	private double lastFrameTime, currFrameTime, elapsTime;
 
+	//game objects
 	private GameObject dol;
-	private GameObject cube;
+	private GameObject ammoPickup;
+	private GameObject healthPickup;
 
+	// shapes and textures for game objects
 	private ObjShape dolS;
-	private ObjShape cubeS;
+	private ObjShape ammoS;
+	private ObjShape healthS;
 
 	private TextureImage doltx;
-	private TextureImage ancient;
+	private TextureImage ammoTx;
+	private TextureImage healthTx;
 
+	//object animation values
+	private float ammoBobTime = 0.0f;
+	private float healthSpin = 0.0f;
+
+	//object init locations and scale
+	private Vector3f ammoBasePos = new Vector3f(3.0f, 1.0f, 0.0f);
+	private float ammoScale = 1.0f;
+	private Vector3f healthBasePos = new Vector3f(-3.0f, 1.0f, 0.0f);
+	private float healthScale = 1.0f;
+
+	//lighting
 	private Light mainLight;
 
 	//mouselook
@@ -203,6 +219,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	{
 		dolS = new ImportedModel("dolphinHighPoly.obj");
 		ghostS = dolS;
+
+		ammoS = new ImportedModel("ammo.obj");
+		healthS = new ImportedModel("health.obj");
 	}
 
 	@Override
@@ -210,6 +229,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	{
 		doltx = new TextureImage("Dolphin_HighPolyUV.jpg");
 		ghostT = doltx;
+
+		ammoTx = new TextureImage("ammo.jpg");
+		healthTx = new TextureImage("health.jpg");
 	}
 
 	@Override
@@ -222,6 +244,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		initialScale = new Matrix4f().scaling(3.0f);
 		dol.setLocalTranslation(initialTranslation);
 		dol.setLocalScale(initialScale);
+
+		ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
+		ammoPickup.setLocalTranslation(
+			new Matrix4f().translation(ammoBasePos.x, ammoBasePos.y, ammoBasePos.z));
+		ammoPickup.setLocalScale(new Matrix4f().scaling(ammoScale));
+
+		healthPickup = new GameObject(GameObject.root(), healthS, healthTx);
+		healthPickup.setLocalTranslation(
+			new Matrix4f().translation(healthBasePos.x, healthBasePos.y, healthBasePos.z));
+		healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
 	}
 
 	@Override
@@ -415,6 +447,25 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		String posStr = String.format("Dolphin Pos: X(%.2f) Y(%.2f) Z(%.2f)", dpos.x, dpos.y, dpos.z);
 		Vector3f hudColor = new Vector3f(1, 1, 1);
 		engine.getHUDmanager().setHUD1(posStr, hudColor, 15, 15);
+
+		// animate ammo pickup: bob up and down
+		ammoBobTime += dt;
+		float bobOffset = (float)java.lang.Math.sin(ammoBobTime * 2.0f) * 0.25f;
+		ammoPickup.setLocalTranslation(
+			new Matrix4f().translation(
+				ammoBasePos.x,
+				ammoBasePos.y + bobOffset,
+				ammoBasePos.z));
+
+		// animate health pickup: rotate around Y axis
+		healthSpin += dt * 45.0f; // degrees per second
+		healthPickup.setLocalRotation(
+			new Matrix4f().rotationY((float)java.lang.Math.toRadians(healthSpin)));
+		healthPickup.setLocalTranslation(
+			new Matrix4f().translation(
+				healthBasePos.x,
+				healthBasePos.y,
+				healthBasePos.z));
 	}
 
 	@Override
