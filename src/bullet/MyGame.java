@@ -19,6 +19,15 @@ import tage.networking.IGameConnection.ProtocolType;
 public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 {
 	private static Engine engine;
+	
+	private enum GameState
+    {
+        PLAYING,
+        PAUSED,
+        GAME_OVER
+    }
+
+    private GameState gameState = GameState.PLAYING;
 
 	private InputManager im;
 	private CameraOrbit3D orbitCam;
@@ -61,6 +70,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private ProtocolType serverProtocol;
 	private ProtocolClient protClient;
 	private boolean isClientConnected = false;
+	
+	//skyboxes
+	private int cloudTest;
 	
 	//getter functions
 	public GameObject getAvatar() { return dol; }
@@ -159,6 +171,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			serverProtocol = ProtocolType.TCP;
 		else
 			serverProtocol = ProtocolType.UDP;
+	}
+	
+	@Override
+	public void loadSkyBoxes()
+	{
+		cloudTest = (engine.getSceneGraph()).loadCubeMap("blueSpace"); //make sure the images are .jpg
+		//add same as above here save xp xn yp yn zp zn in assets/skyboxes/"   "
+		
+		(engine.getSceneGraph()).setActiveSkyBoxTexture(cloudTest); //sets the scene to this skybox
+		(engine.getSceneGraph()).setSkyBoxEnabled(true);
 	}
 
 	public static void main(String[] args)
