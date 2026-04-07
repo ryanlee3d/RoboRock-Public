@@ -37,16 +37,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private double lastFrameTime, currFrameTime, elapsTime;
 
 	//game objects
-	private GameObject dol;
+	private GameObject player;
 	private GameObject ammoPickup;
 	private GameObject healthPickup;
 
 	// shapes and textures for game objects
-	private ObjShape dolS;
+	private ObjShape playerS;
 	private ObjShape ammoS;
 	private ObjShape healthS;
 
-	private TextureImage doltx;
+	private TextureImage playerTx;
 	private TextureImage ammoTx;
 	private TextureImage healthTx;
 
@@ -91,7 +91,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private int cloudTest;
 	
 	//getter functions
-	public GameObject getAvatar() { return dol; }
+	public GameObject getAvatar() { return player; }
 	public Camera getCamera() { return cam; }
 	public ObjShape getGhostShape() { return ghostS; }
 	public TextureImage getGhostTexture() { return ghostT; }
@@ -100,8 +100,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	
 	public Vector3f getPlayerPosition()
 	{
-		if (dol == null) return new Vector3f(0,0,0);
-		return dol.getWorldLocation();
+		if (player == null) return new Vector3f(0,0,0);
+		return player.getWorldLocation();
 	}
 	
 	public ProtocolClient getProtocolClient(){return protClient; }
@@ -217,8 +217,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadShapes()
 	{
-		dolS = new ImportedModel("dolphinHighPoly.obj");
-		ghostS = dolS;
+		playerS = new ImportedModel("robot.obj");
+		ghostS = playerS;
 
 		ammoS = new ImportedModel("ammo.obj");
 		healthS = new ImportedModel("health.obj");
@@ -227,8 +227,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadTextures()
 	{
-		doltx = new TextureImage("Dolphin_HighPolyUV.jpg");
-		ghostT = doltx;
+		playerTx = new TextureImage("robot.jpg");
+		ghostT = playerTx;
 
 		ammoTx = new TextureImage("ammo.jpg");
 		healthTx = new TextureImage("health.jpg");
@@ -239,11 +239,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	{
 		Matrix4f initialTranslation, initialScale;
 
-		dol = new GameObject(GameObject.root(), dolS, doltx);
+		player = new GameObject(GameObject.root(), playerS, playerTx);
 		initialTranslation = new Matrix4f().translation(0.0f, 0.75f, 0.0f);
-		initialScale = new Matrix4f().scaling(3.0f);
-		dol.setLocalTranslation(initialTranslation);
-		dol.setLocalScale(initialScale);
+		initialScale = new Matrix4f().scaling(0.01f);
+		player.setLocalTranslation(initialTranslation);
+		player.setLocalScale(initialScale);
 
 		ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
 		ammoPickup.setLocalTranslation(
@@ -305,7 +305,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
 		camOver = engine.getRenderSystem().getViewport("OVERHEAD").getCamera();
 
-		orbitCam = new CameraOrbit3D(cam, dol);
+		orbitCam = new CameraOrbit3D(cam, player);
 
 		lastFrameTime = System.currentTimeMillis();
 		currFrameTime = System.currentTimeMillis();
@@ -320,8 +320,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 		FwdAction fwdA = new FwdAction(this, -25.0f, cam);
 		FwdAction backA = new FwdAction(this, 25.0f, cam);
-		TurnAction leftT = new TurnAction(this, -25.0f, cam);
-		TurnAction rightT = new TurnAction(this, 25.0f, cam);
+		StrafeAction leftS = new StrafeAction(this, 25.0f, cam);
+		StrafeAction rightS = new StrafeAction(this, -25.0f, cam);
 
 		AbstractInputAction orbitAPad = new OrbitAzimuthAction(-1.0f);
 		AbstractInputAction zoomIn = new OverheadZoomInAction();
@@ -340,7 +340,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
 
 		im.associateActionWithAllGamepads(
-			net.java.games.input.Component.Identifier.Axis.X, rightT,
+			net.java.games.input.Component.Identifier.Axis.X, rightS,
 			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
 
 		im.associateActionWithAllGamepads(
@@ -373,11 +373,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
 
 		im.associateActionWithAllKeyboards(
-			net.java.games.input.Component.Identifier.Key.A, leftT,
+			net.java.games.input.Component.Identifier.Key.A, leftS,
 			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
 
 		im.associateActionWithAllKeyboards(
-			net.java.games.input.Component.Identifier.Key.D, rightT,
+			net.java.games.input.Component.Identifier.Key.D, rightS,
 			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
 
 		im.associateActionWithAllKeyboards(
@@ -435,16 +435,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		if (!mouseModeInitiated) initMouseMode();
 		orbitCam.updateCameraPosition();
 
-		Vector3f dpos = dol.getWorldLocation();
+		Vector3f playerpos = player.getWorldLocation();
 
 		// Overhead camera follows dolphin from previous assignment and needs to be changed - was going to work on setting up the multiplayer network first
-		camOver.setLocation(new Vector3f(dpos.x + ohPanX, ohHeight, dpos.z + ohPanZ));
+		camOver.setLocation(new Vector3f(playerpos.x + ohPanX, ohHeight, playerpos.z + ohPanZ));
 		camOver.setU(new Vector3f(1, 0, 0));
 		camOver.setV(new Vector3f(0, 0, -1));
 		camOver.setN(new Vector3f(0, -1, 0));
 
 		// HUD that was brought over from A2
-		String posStr = String.format("Dolphin Pos: X(%.2f) Y(%.2f) Z(%.2f)", dpos.x, dpos.y, dpos.z);
+		String posStr = String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z);
 		Vector3f hudColor = new Vector3f(1, 1, 1);
 		engine.getHUDmanager().setHUD1(posStr, hudColor, 15, 15);
 
