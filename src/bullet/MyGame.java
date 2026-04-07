@@ -55,6 +55,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private float healthSpin = 0.0f;
 
 	//object init locations and scale
+	private Vector3f playerStartPos = new Vector3f(0.0f, 0.75f, 0.0f);
+	private float playerScale = 0.01f;
 	private Vector3f ammoBasePos = new Vector3f(3.0f, 1.0f, 0.0f);
 	private float ammoScale = 1.0f;
 	private Vector3f healthBasePos = new Vector3f(-3.0f, 1.0f, 0.0f);
@@ -234,27 +236,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		healthTx = new TextureImage("health.jpg");
 	}
 
-	@Override
-	public void buildObjects()
-	{
-		Matrix4f initialTranslation, initialScale;
+@Override
+public void buildObjects()
+{
+	player = new GameObject(GameObject.root(), playerS, playerTx);
+	player.setLocalTranslation(new Matrix4f().translation(playerStartPos.x, playerStartPos.y, playerStartPos.z));
+	player.setLocalScale(new Matrix4f().scaling(playerScale));
 
-		player = new GameObject(GameObject.root(), playerS, playerTx);
-		initialTranslation = new Matrix4f().translation(0.0f, 0.75f, 0.0f);
-		initialScale = new Matrix4f().scaling(0.01f);
-		player.setLocalTranslation(initialTranslation);
-		player.setLocalScale(initialScale);
+	ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
+	ammoPickup.setLocalTranslation( new Matrix4f().translation(ammoBasePos.x, ammoBasePos.y, ammoBasePos.z));
+	ammoPickup.setLocalScale(new Matrix4f().scaling(ammoScale));
 
-		ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
-		ammoPickup.setLocalTranslation(
-			new Matrix4f().translation(ammoBasePos.x, ammoBasePos.y, ammoBasePos.z));
-		ammoPickup.setLocalScale(new Matrix4f().scaling(ammoScale));
-
-		healthPickup = new GameObject(GameObject.root(), healthS, healthTx);
-		healthPickup.setLocalTranslation(
-			new Matrix4f().translation(healthBasePos.x, healthBasePos.y, healthBasePos.z));
-		healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
-	}
+	healthPickup = new GameObject(GameObject.root(), healthS, healthTx);
+	healthPickup.setLocalTranslation( new Matrix4f().translation(healthBasePos.x, healthBasePos.y, healthBasePos.z));
+	healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
+}
 
 	@Override
 	public void initializeLights()
@@ -305,7 +301,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
 		camOver = engine.getRenderSystem().getViewport("OVERHEAD").getCamera();
 
-		orbitCam = new CameraOrbit3D(cam, player);
+		orbitCam = new CameraOrbit3D(cam, player, playerScale);
 
 		lastFrameTime = System.currentTimeMillis();
 		currFrameTime = System.currentTimeMillis();
@@ -335,7 +331,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		AbstractInputAction recenter = new OhRecenter();
 
 		//gamepad bindings
-		im.associateActionWithAllGamepads(
+		/*im.associateActionWithAllGamepads(
 			net.java.games.input.Component.Identifier.Axis.Y, fwdA,
 			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
 
@@ -361,7 +357,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 		im.associateActionWithAllGamepads(
 			net.java.games.input.Component.Identifier.Button._9, elevDown,
-			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+			InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);*/
 
 		//keyboard bindings
 		im.associateActionWithAllKeyboards(
