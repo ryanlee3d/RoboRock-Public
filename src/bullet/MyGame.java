@@ -43,14 +43,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private GameObject ammoPickup;
 	private GameObject healthPickup;
 
+	private GameObject plasmaRifle;
+
 	// shapes and textures for game objects
 	private ObjShape playerS;
 	private ObjShape ammoS;
 	private ObjShape healthS;
 
+	private ObjShape plasmaRifleS;
+
 	private TextureImage playerTx;
 	private TextureImage ammoTx;
 	private TextureImage healthTx;
+
+	private TextureImage plasmaRifleTx;
 
 	//object animation values
 	private float ammoBobTime = 0.0f;
@@ -63,6 +69,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private float ammoScale = 1.0f;
 	private Vector3f healthBasePos = new Vector3f(-3.0f, 1.0f, 0.0f);
 	private float healthScale = 1.0f;
+
+	// plasma rifle transform
+	private Vector3f plasmaRiflePos = new Vector3f(0.18f, 1.10f, 0.28f);
+	private float plasmaRifleScale = 0.5f;
+	private float plasmaRifleRotY = 0.0f; // degrees
 
 	//lighting
 	private Light mainLight;
@@ -226,6 +237,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 		ammoS = new ImportedModel("ammo.obj");
 		healthS = new ImportedModel("health.obj");
+		plasmaRifleS = new ImportedModel("plasmaRifle.obj");
 	}
 
 	@Override
@@ -236,6 +248,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 		ammoTx = new TextureImage("ammo.jpg");
 		healthTx = new TextureImage("health.jpg");
+		plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
 	}
 
 @Override
@@ -252,6 +265,17 @@ public void buildObjects()
 	healthPickup = new GameObject(GameObject.root(), healthS, healthTx);
 	healthPickup.setLocalTranslation( new Matrix4f().translation(healthBasePos.x, healthBasePos.y, healthBasePos.z));
 	healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
+
+	// ---------- plasma rifle attached to player ----------
+	plasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+	plasmaRifle.setLocalTranslation(new Matrix4f().translation(plasmaRiflePos.x, plasmaRiflePos.y, plasmaRiflePos.z));
+	plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(plasmaRifleRotY)));
+	plasmaRifle.setLocalScale(new Matrix4f().scaling(plasmaRifleScale));
+	plasmaRifle.setParent(player);
+	plasmaRifle.propagateTranslation(true);
+	plasmaRifle.propagateRotation(true);
+	plasmaRifle.propagateScale(true);
+	plasmaRifle.applyParentRotationToPosition(true);
 }
 
 	@Override
