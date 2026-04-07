@@ -34,6 +34,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private Camera cam;
 	private Camera camOver;
 
+	private float sensitvity = 0.25f;
+
 	private double lastFrameTime, currFrameTime, elapsTime;
 
 	//game objects
@@ -431,6 +433,16 @@ public void buildObjects()
 		if (!mouseModeInitiated) initMouseMode();
 		orbitCam.updateCameraPosition();
 
+		Vector3f camN = cam.getN();
+		float flatX = camN.x;
+		float flatZ = camN.z;
+
+		if (java.lang.Math.abs(flatX) > 0.0001f || java.lang.Math.abs(flatZ) > 0.0001f)
+		{
+			float yaw = (float)java.lang.Math.atan2(flatX, flatZ);
+			player.setLocalRotation(new Matrix4f().rotationY(yaw));
+		}
+
 		Vector3f playerpos = player.getWorldLocation();
 
 		// Overhead camera follows dolphin from previous assignment and needs to be changed - was going to work on setting up the multiplayer network first
@@ -481,7 +493,13 @@ public void buildObjects()
 		curMouseY = e.getYOnScreen();
 
 		float mouseDeltaX = prevMouseX - curMouseX;
-		orbitCam.addAzimuth(mouseDeltaX * 0.25f);
+		float mouseDeltaY = prevMouseY - curMouseY;
+
+		float xSensitivity = mouseDeltaX * sensitvity;
+		float ySensitivity = mouseDeltaY * -sensitvity;
+
+		orbitCam.addAzimuth(xSensitivity);
+		orbitCam.addElevation(ySensitivity);
 
 		prevMouseX = curMouseX;
 		prevMouseY = curMouseY;

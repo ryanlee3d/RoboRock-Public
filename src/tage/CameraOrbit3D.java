@@ -71,7 +71,7 @@ public class CameraOrbit3D
 	public void addElevation(float de)
 	{
 		cameraElevation += de;
-		if (cameraElevation < 5.0f) cameraElevation = 5.0f;
+		if (cameraElevation < -80.0f) cameraElevation = -80.0f;
 		if (cameraElevation > 80.0f) cameraElevation = 80.0f;
 		updateCameraPosition();
 	}
