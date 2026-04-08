@@ -1,6 +1,6 @@
 package bullet;
 
-public class mainMenu
+public class MainMenu
 {
     public enum MenuAction
     {

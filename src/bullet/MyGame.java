@@ -30,7 +30,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private GameState gameState = GameState.MENU;
 	private int menuSelection = 0;
-	private final mainMenu menu = new mainMenu();
+	private final MainMenu menu = new MainMenu();
 
 	private InputManager im;
 	private CameraOrbit3D orbitCam;
@@ -120,7 +120,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	public Engine getEngine() { return engine; }
 	
 	//setter functions
-	private void setMapSelection(int selection){mapSelection = selection};
+	private void setMapSelection(int selection){mapSelection = selection;}
 	
 	public Vector3f getPlayerPosition()
 	{
@@ -226,6 +226,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			break;
 		case 1:
 			break;
+		}
 	}
 
 	public static void main(String[] args)
