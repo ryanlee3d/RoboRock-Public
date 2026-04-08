@@ -22,12 +22,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	
 	private enum GameState
     {
+		MENU,
         PLAYING,
         PAUSED,
         GAME_OVER
     }
 
-    private GameState gameState = GameState.PLAYING;
+    private GameState gameState = GameState.MENU;
+	private int menuSelection = 0;
+	private final mainMenu menu = new mainMenu();
 
 	private InputManager im;
 	private CameraOrbit3D orbitCam;
@@ -105,6 +108,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	//skyboxes
 	private int cloudTest;
 	
+	//map selection
+	private int mapSelection = 0;
+	
 	//getter functions
 	public GameObject getAvatar() { return player; }
 	public Camera getCamera() { return cam; }
@@ -112,6 +118,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	public TextureImage getGhostTexture() { return ghostT; }
 	public GhostManager getGhostManager() { return gm; }
 	public Engine getEngine() { return engine; }
+	
+	//setter functions
+	private void setMapSelection(int selection){mapSelection = selection};
 	
 	public Vector3f getPlayerPosition()
 	{
@@ -207,11 +216,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadSkyBoxes()
 	{
-		cloudTest = (engine.getSceneGraph()).loadCubeMap("blueSpace"); //make sure the images are .jpg
-		//add same as above here save xp xn yp yn zp zn in assets/skyboxes/"   "
+		switch(mapSelection) {
+		case 0:
+			cloudTest = (engine.getSceneGraph()).loadCubeMap("blueSpace"); //make sure the images are .jpg
+			//add same as above here save xp xn yp yn zp zn in assets/skyboxes/"   "
 		
-		(engine.getSceneGraph()).setActiveSkyBoxTexture(cloudTest); //sets the scene to this skybox
-		(engine.getSceneGraph()).setSkyBoxEnabled(true);
+			(engine.getSceneGraph()).setActiveSkyBoxTexture(cloudTest); //sets the scene to this skybox
+			(engine.getSceneGraph()).setSkyBoxEnabled(true);
+			break;
+		case 1:
+			break;
 	}
 
 	public static void main(String[] args)
@@ -232,23 +246,35 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadShapes()
 	{
-		playerS = new ImportedModel("robot.obj");
-		ghostS = playerS;
+		switch (mapSelection) {
+			case 0:
+				playerS = new ImportedModel("robot.obj");
+				ghostS = playerS;
 
-		ammoS = new ImportedModel("ammo.obj");
-		healthS = new ImportedModel("health.obj");
-		plasmaRifleS = new ImportedModel("plasmaRifle.obj");
+				ammoS = new ImportedModel("ammo.obj");
+				healthS = new ImportedModel("health.obj");
+				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
+				break;
+			case 1:
+				break;
+		}
 	}
 
 	@Override
 	public void loadTextures()
 	{
-		playerTx = new TextureImage("robot.jpg");
-		ghostT = playerTx;
+		switch(mapSelection){
+			case 0:
+				playerTx = new TextureImage("robot.jpg");
+				ghostT = playerTx;
 
-		ammoTx = new TextureImage("ammo.jpg");
-		healthTx = new TextureImage("health.jpg");
-		plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
+				ammoTx = new TextureImage("ammo.jpg");
+				healthTx = new TextureImage("health.jpg");
+				plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
+				break;
+			case 1:
+				break;
+		}
 	}
 
 @Override
@@ -281,13 +307,19 @@ public void buildObjects()
 	@Override
 	public void initializeLights()
 	{
-		Light.setGlobalAmbient(0.5f, 0.5f, 0.5f);
+		switch(mapSelection){
+			case 0:
+				Light.setGlobalAmbient(0.5f, 0.5f, 0.5f);
 
-		mainLight = new Light();
-		mainLight.setLocation(new Vector3f(0.0f, 0.0f, 0.0f));
-		engine.getSceneGraph().addLight(mainLight);
+				mainLight = new Light();
+				mainLight.setLocation(new Vector3f(0.0f, 0.0f, 0.0f));
+				engine.getSceneGraph().addLight(mainLight);
+				break;
+			case 1:
+				break;
+		}
 	}
-
+	
 	@Override
 	public void createViewports()
 	{
@@ -445,6 +477,16 @@ public void buildObjects()
 	@Override
 	public void update()
 	{
+		if(gameState == GameState.MENU) {
+			Vector3f titleColor = new Vector3f(0.95f, 0.8f, 0.45f);
+			Vector3f bodyColor = new Vector3f(1.0f, 1.0f, 1.0f);
+			Vector3f footerColor = new Vector3f(0.7f, 0.9f, 0.7f);
+
+			engine.getHUDmanager().setHUD1(menu.getTitleText(), titleColor, 520, 620);
+			engine.getHUDmanager().setHUD2(menu.getMenuText(), bodyColor, 120, 560);
+			engine.getHUDmanager().setHUD3(menu.getFooterText(), footerColor, 420, 120);
+			return;
+		}
 		lastFrameTime = currFrameTime;
 		currFrameTime = System.currentTimeMillis();
 		float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
@@ -498,6 +540,48 @@ public void buildObjects()
 				healthBasePos.x,
 				healthBasePos.y,
 				healthBasePos.z));
+	}
+
+	@Override
+	public void keyPressed(KeyEvent e)
+	{
+		if (gameState == GameState.MENU)
+		{
+			switch (e.getKeyCode())
+			{
+				case KeyEvent.VK_UP:
+					menu.moveUp();
+					menuSelection = menu.getSelectedIndex();
+					break;
+				case KeyEvent.VK_DOWN:
+					menu.moveDown();
+					menuSelection = menu.getSelectedIndex();
+					break;
+				case KeyEvent.VK_ENTER:
+					switch (menu.activateSelection())
+					{
+						case START_GAME:
+							gameState = GameState.PLAYING;
+							engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
+							engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
+							engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+							break;
+						case MULTIPLAYER:
+							break;
+						case QUIT:
+							shutdown();
+							System.exit(0);
+							break;
+						default:
+							System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
+							break;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+		super.keyPressed(e);
 	}
 
 	@Override
