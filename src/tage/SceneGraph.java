@@ -19,6 +19,7 @@ import org.joml.*;
 * <li> getRoot()
 * <li> loadCubeMap()
 * <li> removeGameObject()
+* <li> removeAllGameObjects()
 * <li> getNumGameObjects()
 * <li> addPhysicsXXX() - where XXX is the desired physics object shape
 * <li> removePhysicsObject()
@@ -117,6 +118,25 @@ public class SceneGraph
 			if (go.getParent() != null) (go.getParent()).removeChild(go);
 			if (gameObjects.contains(go)) gameObjects.remove(go);
 		}
+	}
+	//** Removes all GameObjects from the SceneGraph */
+	public void removeAllGameObjects() {
+		boolean removed;
+		do {
+			removed = false;
+			//take a snapshot of the current game objects
+			ArrayList<GameObject> x = new ArrayList<GameObject>(gameObjects);
+
+			for(GameObject go : x) {
+				//skip root objects and skybox
+				if (go == root || go == skybox) continue;
+				//skip parent objects
+				if (!go.hasChildren()) {
+					removeGameObject(go);
+					removed = true;
+				}
+			}
+		} while (removed);
 	}
 
 	protected void addGameObject(GameObject g) { gameObjects.add(g); }

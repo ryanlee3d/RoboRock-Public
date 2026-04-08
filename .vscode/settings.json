@@ -1,0 +1,12 @@
+{
+  "java.project.sourcePaths": [
+    "src"
+  ],
+  "java.project.outputPath": "bin",
+  "java.project.referencedLibraries": [
+    "C:/javagaming/jogl/jogamp-fat.jar",
+    "C:/javagaming/joml/joml-1.10.7.jar",
+    "C:/javagaming/libbulletjme/Libbulletjme-21.2.1.jar",
+    "C:/javagaming/jinput/jinput-2.0.10.jar"
+  ]
+}
