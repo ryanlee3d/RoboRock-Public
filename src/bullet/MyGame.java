@@ -27,7 +27,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         PAUSED,
         GAME_OVER
     }
-
+	private boolean isShuttingDown = false;
     private GameState gameState = GameState.MENU;
 	private int menuSelection = 0;
 	private final MainMenu menu = new MainMenu();
@@ -48,8 +48,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 	private GameObject plasmaRifle;
 
+	// shapes for animated objects
+	private AnimatedShape playerS;
+
+	// player animation values
+	private boolean isMoving = false;
+	private boolean wasMoving = false;
+	private boolean isSwapping = false;
+	private Vector3f prevPlayerPos = new Vector3f(0,0,0);
+
+	// adjust this if the swap animation is longer/shorter
+	private float swapTimer = 0.0f;
+	private final float swapDuration = 0.8f;
+
 	// shapes and textures for game objects
-	private ObjShape playerS;
 	private ObjShape ammoS;
 	private ObjShape healthS;
 
@@ -61,7 +73,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 	private TextureImage plasmaRifleTx;
 
-	//object animation values
+	//pickup object animation values
 	private float ammoBobTime = 0.0f;
 	private float healthSpin = 0.0f;
 
@@ -200,6 +212,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		prevMouseY = centerY;
 	}
 
+	private void playSwapAnimation()
+	{
+		if (isShuttingDown) return;
+		if (playerS == null) return;
+
+		isSwapping = true;
+		swapTimer = swapDuration;
+
+		playerS.stopAnimation();
+
+		if (isMoving)
+			playerS.playAnimation("SWAPRUN", 1.0f, AnimatedShape.EndType.NONE, 1);
+		else
+			playerS.playAnimation("SWAP", 1.0f, AnimatedShape.EndType.NONE, 1);
+	}
+
 	public MyGame(String serverAddress, int serverPort, String protocol)
 	{
 		super();
@@ -249,7 +277,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	{
 		switch (mapSelection) {
 			case 0:
-				playerS = new ImportedModel("robot.obj");
+				playerS = new AnimatedShape("Robot.rkm", "Robot.rks");
+				playerS.loadAnimation("RUN", "RobotRun.rka");
+				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
+				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 				ghostS = playerS;
 
 				ammoS = new ImportedModel("ammo.obj");
@@ -284,6 +315,10 @@ public void buildObjects()
 	player = new GameObject(GameObject.root(), playerS, playerTx);
 	player.setLocalTranslation(new Matrix4f().translation(playerStartPos.x, playerStartPos.y, playerStartPos.z));
 	player.setLocalScale(new Matrix4f().scaling(playerScale));
+	player.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+    .rotationX((float)java.lang.Math.toRadians(90.0f))
+    .rotateZ((float)java.lang.Math.toRadians(90.0f)));
+	prevPlayerPos.set(player.getWorldLocation());
 
 	ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
 	ammoPickup.setLocalTranslation( new Matrix4f().translation(ammoBasePos.x, ammoBasePos.y, ammoBasePos.z));
@@ -478,6 +513,10 @@ public void buildObjects()
 	@Override
 	public void update()
 	{
+		if (isShuttingDown) return;
+
+    	if (engine == null) return;
+    	if (engine.getRenderSystem() == null) return;
 		if(gameState == GameState.MENU) {
 			Vector3f titleColor = new Vector3f(0.95f, 0.8f, 0.45f);
 			Vector3f bodyColor = new Vector3f(1.0f, 1.0f, 1.0f);
@@ -500,6 +539,8 @@ public void buildObjects()
 		if (!mouseModeInitiated) initMouseMode();
 		orbitCam.updateCameraPosition();
 
+		if (playerS != null) playerS.updateAnimation();
+
 		Vector3f camN = cam.getN();
 		float flatX = camN.x;
 		float flatZ = camN.z;
@@ -511,6 +552,40 @@ public void buildObjects()
 		}
 
 		Vector3f playerpos = player.getWorldLocation();
+
+		Vector3f currentPos = player.getWorldLocation();
+		float moveDist = currentPos.distance(prevPlayerPos);
+
+		// small threshold so tiny float changes do not count as movement
+		isMoving = moveDist > 0.001f;
+
+		// handle swap timing
+		if (playerS != null)
+		{
+			if (isSwapping)
+			{
+				swapTimer -= dt;
+				if (swapTimer <= 0.0f)
+				{
+					isSwapping = false;
+
+					if (isMoving)
+						playerS.playAnimation("RUN", 0.05f, AnimatedShape.EndType.LOOP, 0);
+					else
+						playerS.stopAnimation();
+				}
+			}
+			else
+			{
+				if (isMoving && !wasMoving)
+					playerS.playAnimation("RUN", 1.0f, AnimatedShape.EndType.LOOP, 0);
+				else if (!isMoving && wasMoving)
+					playerS.stopAnimation();
+			}
+		}
+
+		wasMoving = isMoving;
+		prevPlayerPos.set(currentPos);
 
 		// Overhead camera follows dolphin from previous assignment and needs to be changed - was going to work on setting up the multiplayer network first
 		camOver.setLocation(new Vector3f(playerpos.x + ohPanX, ohHeight, playerpos.z + ohPanZ));
@@ -570,9 +645,14 @@ public void buildObjects()
 						case MULTIPLAYER:
 							break;
 						case QUIT:
+							isShuttingDown = true;
+							mouseModeInitiated = false;
+							isRecentering = false;
+							isSwapping = false;
+
 							shutdown();
 							System.exit(0);
-							break;
+							return;
 						default:
 							System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
 							break;
@@ -588,7 +668,9 @@ public void buildObjects()
 	@Override
 	public void mouseMoved(MouseEvent e)
 	{
+		if (isShuttingDown) return;
 		if (!mouseModeInitiated) return;
+		if (orbitCam == null) return;
 
 		if (isRecentering &&
 			e.getXOnScreen() == (int)centerX &&
@@ -620,8 +702,16 @@ public void buildObjects()
 
 	private void recenterMouse()
 	{
+		if (isShuttingDown) return;
+		if (robot == null) return;
+		if (engine == null) return;
+
 		RenderSystem rs = engine.getRenderSystem();
+		if (rs == null) return;
+
 		Viewport vw = rs.getViewport("MAIN");
+		if (vw == null) return;
+
 		float left = vw.getActualLeft();
 		float bottom = vw.getActualBottom();
 		float width = vw.getActualWidth();
@@ -639,6 +729,8 @@ public void buildObjects()
 	{
 		int clicks = e.getWheelRotation();
 		orbitCam.addRadius(clicks * 0.25f);
+
+		playSwapAnimation();
 	}
 
 	private class OrbitAzimuthAction extends AbstractInputAction
