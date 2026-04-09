@@ -47,8 +47,9 @@ public class FwdAction extends AbstractInputAction
             oldPosition.y() + fwdDirection.y(),
             oldPosition.z() + fwdDirection.z()
         );
-
-        av.setLocalLocation(newPosition);
+        if (game.canMoveOnTerrain(oldPosition, newPosition)){
+            av.setLocalLocation(newPosition);
+        }
 
         if (game.getProtocolClient() != null)
             game.getProtocolClient().sendMoveMessage(av.getWorldLocation());

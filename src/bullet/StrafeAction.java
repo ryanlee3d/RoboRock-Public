@@ -48,8 +48,10 @@ public class StrafeAction extends AbstractInputAction
             oldPosition.y() + strafeDirection.y(),
             oldPosition.z() + strafeDirection.z()
         );
-
+        
+        if(game.canMoveOnTerrain(oldPosition, newPosition)){
         av.setLocalLocation(newPosition);
+        }
 
         if (game.getProtocolClient() != null)
             game.getProtocolClient().sendMoveMessage(av.getWorldLocation());

@@ -8,6 +8,7 @@ import tage.input.action.*;
 import java.awt.*;
 import java.awt.event.*;
 import org.joml.*;
+import org.joml.Math;
 
 //networking imports
 import java.io.IOException;
@@ -42,11 +43,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private double lastFrameTime, currFrameTime, elapsTime;
 
 	//game objects
-	private GameObject player;
-	private GameObject ammoPickup;
-	private GameObject healthPickup;
-
-	private GameObject plasmaRifle;
+	private GameObject player, ammoPickup, healthPickup, plasmaRifle, terr;
 
 	// shapes for animated objects
 	private AnimatedShape playerS;
@@ -62,16 +59,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private final float swapDuration = 0.8f;
 
 	// shapes and textures for game objects
-	private ObjShape ammoS;
-	private ObjShape healthS;
+	private ObjShape ammoS, terrS, healthS, plasmaRifleS;
 
-	private ObjShape plasmaRifleS;
-
-	private TextureImage playerTx;
-	private TextureImage ammoTx;
-	private TextureImage healthTx;
-
-	private TextureImage plasmaRifleTx;
+	private TextureImage playerTx, terrTx, ammoTx, healthTx, plasmaRifleTx, hills;
 
 	//pickup object animation values
 	private float ammoBobTime = 0.0f;
@@ -84,6 +74,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private float ammoScale = 1.0f;
 	private Vector3f healthBasePos = new Vector3f(-3.0f, 1.0f, 0.0f);
 	private float healthScale = 1.0f;
+
+	//Movement Variables
+	private static final float maxClimbSlope = 1.2f;
+	private static final float maxStepHeight = 0.5f;
 
 	// plasma rifle transform
 	private Vector3f plasmaRiflePos = new Vector3f(0.18f, 1.10f, 0.28f);
@@ -275,6 +269,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadShapes()
 	{
+		terrS = new TerrainPlane(1000);
 		switch (mapSelection) {
 			case 0:
 				playerS = new AnimatedShape("Robot.rkm", "Robot.rks");
@@ -300,9 +295,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				playerTx = new TextureImage("robot.jpg");
 				ghostT = playerTx;
 
+				terrTx = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
 				ammoTx = new TextureImage("ammo.jpg");
 				healthTx = new TextureImage("health.jpg");
 				plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
+				hills = new TextureImage("test.png");
 				break;
 			case 1:
 				break;
@@ -338,6 +335,17 @@ public void buildObjects()
 	plasmaRifle.propagateRotation(true);
 	plasmaRifle.propagateScale(true);
 	plasmaRifle.applyParentRotationToPosition(true);
+
+	// ---------- terrain ----------
+	terr = new GameObject(GameObject.root(), terrS, terrTx);
+	Matrix4f initialTranslation = (new Matrix4f()).translation(0f,0f,0f);
+	terr.setLocalTranslation(initialTranslation);
+	Matrix4f initialScale = (new Matrix4f()).scaling(100.0f, 50.0f, 100.0f);
+	terr.setLocalScale(initialScale);
+	terr.setHeightMap(hills);
+	terr.getRenderStates().setTiling(1);
+	terr.getRenderStates().setTileFactor(100);
+
 }
 
 	@Override
@@ -552,7 +560,8 @@ public void buildObjects()
 		}
 
 		Vector3f playerpos = player.getWorldLocation();
-
+		float height = terr.getHeight(playerpos.x, playerpos.z);
+		player.setLocalLocation(new Vector3f(playerpos.x(), height, playerpos.z()));
 		Vector3f currentPos = player.getWorldLocation();
 		float moveDist = currentPos.distance(prevPlayerPos);
 
@@ -839,4 +848,28 @@ public void buildObjects()
 			ohPanZ = 0.0f;
 		}
 	}
+	
+	//Calculates the angle of the next portion of terrain to ensure player cannot run up slopes that are too steep
+	public boolean canMoveOnTerrain(Vector3f from, Vector3f to)
+{
+    if (terr == null) return true;
+
+    float currentH = terr.getHeight(from.x(), from.z());
+    float nextH = terr.getHeight(to.x(), to.z());
+
+    float rise = nextH - currentH;
+    float run = (float)Math.sqrt(
+        (to.x() - from.x()) * (to.x() - from.x()) +
+        (to.z() - from.z()) * (to.z() - from.z())
+    );
+
+    if (run < 0.0001f) return true;
+
+    float slope = rise / run;
+
+    if (rise > maxStepHeight) return false;      // too big a step upward
+    if (slope > maxClimbSlope) return false; // too steep uphill
+
+    return true;
+}
 }
