@@ -41,6 +41,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private float sensitvity = 0.25f;
 
 	private double lastFrameTime, currFrameTime, elapsTime;
+	private IAction restartGame;
 
 	//game objects
 	private GameObject player, ammoPickup, healthPickup, plasmaRifle, terr;
@@ -61,7 +62,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	// shapes and textures for game objects
 	private ObjShape ammoS, terrS, healthS, plasmaRifleS;
 
-	private TextureImage playerTx, terrTx, ammoTx, healthTx, plasmaRifleTx, hills;
+	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, heightMap0, heightMap1;
 
 	//pickup object animation values
 	private float ammoBobTime = 0.0f;
@@ -112,7 +113,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private boolean isClientConnected = false;
 	
 	//skyboxes
-	private int cloudTest;
+	private int spaceSkyBox, fluffySkyBox;
 	
 	//map selection
 	private int mapSelection = 0;
@@ -126,7 +127,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	public Engine getEngine() { return engine; }
 	
 	//setter functions
-	private void setMapSelection(int selection){mapSelection = selection;}
+	public void setMapSelection(int selection){mapSelection = selection;}
+	public void setGameState(String state){gameState = GameState.valueOf(state);}
 	
 	public Vector3f getPlayerPosition()
 	{
@@ -238,17 +240,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadSkyBoxes()
 	{
-		switch(mapSelection) {
-		case 0:
-			cloudTest = (engine.getSceneGraph()).loadCubeMap("blueSpace"); //make sure the images are .jpg
+			spaceSkyBox = (engine.getSceneGraph()).loadCubeMap("blueSpace"); //make sure the images are .jpg
 			//add same as above here save xp xn yp yn zp zn in assets/skyboxes/"   "
-		
-			(engine.getSceneGraph()).setActiveSkyBoxTexture(cloudTest); //sets the scene to this skybox
+			fluffySkyBox = (engine.getSceneGraph()).loadCubeMap("fluffyClouds"); //make sure the images are .jpg
+			//add same as above here save xp xn yp yn zp zn in assets/skyboxes/"   "
 			(engine.getSceneGraph()).setSkyBoxEnabled(true);
-			break;
-		case 1:
-			break;
-		}
 	}
 
 	public static void main(String[] args)
@@ -283,6 +279,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
 				break;
 			case 1:
+				playerS = new AnimatedShape("Robot.rkm", "Robot.rks");
+				playerS.loadAnimation("RUN", "RobotRun.rka");
+				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
+				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
+				ghostS = playerS;
+
+				ammoS = new ImportedModel("ammo.obj");
+				healthS = new ImportedModel("health.obj");
+				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
 				break;
 		}
 	}
@@ -290,21 +295,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadTextures()
 	{
-		switch(mapSelection){
-			case 0:
-				playerTx = new TextureImage("robot.jpg");
-				ghostT = playerTx;
+  	  playerTx = new TextureImage("robot.jpg");
+    	ghostT = playerTx;
 
-				terrTx = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
-				ammoTx = new TextureImage("ammo.jpg");
-				healthTx = new TextureImage("health.jpg");
-				plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
-				hills = new TextureImage("test.png");
-				break;
-			case 1:
-				break;
-		}
-	}
+    	ammoTx = new TextureImage("ammo.jpg");
+    	healthTx = new TextureImage("health.jpg");
+    	plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
+
+    	terrTxMap0 = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
+    	terrTxMap1 = new TextureImage("airbase_radar_panels.jpg");
+
+    	heightMap0 = new TextureImage("map0hm.png");
+    	heightMap1 = new TextureImage("map1hm.png");
+}
+
 
 @Override
 public void buildObjects()
@@ -337,14 +341,15 @@ public void buildObjects()
 	plasmaRifle.applyParentRotationToPosition(true);
 
 	// ---------- terrain ----------
-	terr = new GameObject(GameObject.root(), terrS, terrTx);
-	Matrix4f initialTranslation = (new Matrix4f()).translation(0f,0f,0f);
+	terr = new GameObject(GameObject.root(), terrS, terrTxMap0);
+	Matrix4f initialTranslation = (new Matrix4f()).translation(0f, 0f, 0f);
 	terr.setLocalTranslation(initialTranslation);
 	Matrix4f initialScale = (new Matrix4f()).scaling(100.0f, 50.0f, 100.0f);
 	terr.setLocalScale(initialScale);
-	terr.setHeightMap(hills);
 	terr.getRenderStates().setTiling(1);
-	terr.getRenderStates().setTileFactor(100);
+
+	applyMapSelection();
+
 
 }
 
@@ -360,6 +365,11 @@ public void buildObjects()
 				engine.getSceneGraph().addLight(mainLight);
 				break;
 			case 1:
+				Light.setGlobalAmbient(0.5f, 0.5f, 0.5f);
+
+				mainLight = new Light();
+				mainLight.setLocation(new Vector3f(0.0f, 0.0f, 0.0f));
+				engine.getSceneGraph().addLight(mainLight);
 				break;
 		}
 	}
@@ -526,6 +536,7 @@ public void buildObjects()
     	if (engine == null) return;
     	if (engine.getRenderSystem() == null) return;
 		if(gameState == GameState.MENU) {
+			mouseModeInitiated = false;
 			Vector3f titleColor = new Vector3f(0.95f, 0.8f, 0.45f);
 			Vector3f bodyColor = new Vector3f(1.0f, 1.0f, 1.0f);
 			Vector3f footerColor = new Vector3f(0.7f, 0.9f, 0.7f);
@@ -630,49 +641,84 @@ public void buildObjects()
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
-		if (gameState == GameState.MENU)
-		{
+		if (gameState == GameState.MENU){
+    switch (e.getKeyCode())
+    {
+        case KeyEvent.VK_UP:
+            menu.moveUp();
+            menuSelection = menu.getSelectedIndex();
+            break;
+        case KeyEvent.VK_DOWN:
+            menu.moveDown();
+            menuSelection = menu.getSelectedIndex();
+            break;
+        case KeyEvent.VK_LEFT:
+            if (menu.getSelectedIndex() == 1){
+                menu.previousMap();
+                setMapSelection(menu.getSelectedMapIndex());
+                applyMapSelection();
+            }
+            break;
+        case KeyEvent.VK_RIGHT:
+            if (menu.getSelectedIndex() == 1)  {
+                menu.nextMap();
+                setMapSelection(menu.getSelectedMapIndex());
+                applyMapSelection();
+            }
+            break;
+        case KeyEvent.VK_ENTER:
+            switch (menu.activateSelection())  {
+                case START_GAME:
+                    setMapSelection(menu.getSelectedMapIndex());
+                    applyMapSelection();
+                    gameState = GameState.PLAYING;
+                    engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
+                    engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
+                    engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+                    break;
+                case SELECT_MAP:
+                    menu.nextMap();
+                    setMapSelection(menu.getSelectedMapIndex());
+                    applyMapSelection();
+                    break;
+                case MULTIPLAYER:
+                    break;
+                case OPTIONS:
+                    break;
+                case QUIT:
+                    isShuttingDown = true;
+                    mouseModeInitiated = false;
+                    isRecentering = false;
+                    isSwapping = false;
+                    shutdown();
+                    System.exit(0);
+                    return;
+                default:
+                    System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
+                    break;
+            }
+            	break;
+        	default:
+       	    	break;
+	}
+	}	
+		if (gameState == GameState.PLAYING){
 			switch (e.getKeyCode())
 			{
-				case KeyEvent.VK_UP:
-					menu.moveUp();
-					menuSelection = menu.getSelectedIndex();
+				case KeyEvent.VK_ESCAPE:
+					gameState = GameState.PAUSED;
+					engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
 					break;
-				case KeyEvent.VK_DOWN:
-					menu.moveDown();
-					menuSelection = menu.getSelectedIndex();
-					break;
-				case KeyEvent.VK_ENTER:
-					switch (menu.activateSelection())
-					{
-						case START_GAME:
-							gameState = GameState.PLAYING;
-							engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
-							engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
-							engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
-							break;
-						case MULTIPLAYER:
-							break;
-						case QUIT:
-							isShuttingDown = true;
-							mouseModeInitiated = false;
-							isRecentering = false;
-							isSwapping = false;
-
-							shutdown();
-							System.exit(0);
-							return;
-						default:
-							System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
-							break;
-					}
+				case KeyEvent.VK_BACK_SLASH:
+					restartGame = new RestartGame(this);
+					restartGame.performAction(0, null);
 					break;
 				default:
 					break;
 			}
 		}
-		super.keyPressed(e);
-	}
+	super.keyPressed(e);
+}
 
 	@Override
 	public void mouseMoved(MouseEvent e)
@@ -872,4 +918,32 @@ public void buildObjects()
 
     return true;
 }
+private void applyMapSelection()
+{
+    if (terr == null) return;
+
+    switch (mapSelection)
+    {
+        case 0:
+            terr.setTextureImage(terrTxMap0);
+            terr.setHeightMap(heightMap0);
+			(engine.getSceneGraph()).setActiveSkyBoxTexture(fluffySkyBox); //sets the scene to this skybox
+            terr.getRenderStates().setTileFactor(10);
+            break;
+
+        case 1:
+            terr.setTextureImage(terrTxMap1);
+            terr.setHeightMap(heightMap1);
+			(engine.getSceneGraph()).setActiveSkyBoxTexture(spaceSkyBox); //sets the scene to this skybox
+            terr.getRenderStates().setTileFactor(100);
+            break;
+
+        default:
+            terr.setTextureImage(terrTxMap0);
+            terr.setHeightMap(heightMap0);
+            terr.getRenderStates().setTileFactor(10);
+            break;
+    }
+}
+
 }

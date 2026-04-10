@@ -16,5 +16,6 @@ public class RestartGame extends AbstractInputAction {
 		game.getEngine().getSceneGraph().removeAllGameObjects();
 		game.buildObjects();
 		game.initializeGame();
+    game.setGameState("MENU");
 		}
     }
