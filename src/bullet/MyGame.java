@@ -44,10 +44,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private IAction restartGame;
 
 	//game objects
-	private GameObject player, ammoPickup, healthPickup, plasmaRifle, terr;
+	private GameObject player, skinny, ape, ammoPickup, healthPickup, plasmaRifle, apePlasmaRifle, terr;
 
 	// shapes for animated objects
-	private AnimatedShape playerS;
+	private AnimatedShape playerS, skinnyS, apeS;
 
 	// player animation values
 	private boolean isMoving = false;
@@ -62,7 +62,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	// shapes and textures for game objects
 	private ObjShape ammoS, terrS, healthS, plasmaRifleS;
 
-	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, heightMap0, heightMap1;
+	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, heightMap0, heightMap1, skinnyTx, apeTx;
 
 	//pickup object animation values
 	private float ammoBobTime = 0.0f;
@@ -224,6 +224,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			playerS.playAnimation("SWAP", 1.0f, AnimatedShape.EndType.NONE, 1);
 	}
 
+	private void snapToTerrain(GameObject obj)
+	{
+		if (obj == null || terr == null) return;
+
+		Vector3f pos = obj.getWorldLocation();
+		float height = terr.getHeight(pos.x, pos.z);
+
+		obj.setLocalLocation(new Vector3f(pos.x, height, pos.z));
+	}
+
 	public MyGame(String serverAddress, int serverPort, String protocol)
 	{
 		super();
@@ -274,6 +284,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 				ghostS = playerS;
 
+				skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
+				skinnyS.loadAnimation("WAVE", "wave.rka");
+
+				apeS = new AnimatedShape("ape.rkm", "ape.rks");
+				apeS.loadAnimation("RUN", "apeRun.rka");
+
 				ammoS = new ImportedModel("ammo.obj");
 				healthS = new ImportedModel("health.obj");
 				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
@@ -295,8 +311,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	@Override
 	public void loadTextures()
 	{
-  	  playerTx = new TextureImage("robot.jpg");
+  		playerTx = new TextureImage("robot.jpg");
     	ghostT = playerTx;
+
+		skinnyTx = new TextureImage("skinny.jpg");
+
+		apeTx = new TextureImage("ape.jpg"); // or whatever texture name
 
     	ammoTx = new TextureImage("ammo.jpg");
     	healthTx = new TextureImage("health.jpg");
@@ -305,7 +325,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     	terrTxMap0 = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
     	terrTxMap1 = new TextureImage("airbase_radar_panels.jpg");
 
-    	heightMap0 = new TextureImage("map0hm.png");
+   		heightMap0 = new TextureImage("map0hm.png");
     	heightMap1 = new TextureImage("map1hm.png");
 }
 
@@ -316,10 +336,31 @@ public void buildObjects()
 	player = new GameObject(GameObject.root(), playerS, playerTx);
 	player.setLocalTranslation(new Matrix4f().translation(playerStartPos.x, playerStartPos.y, playerStartPos.z));
 	player.setLocalScale(new Matrix4f().scaling(playerScale));
-	player.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-    .rotationX((float)java.lang.Math.toRadians(90.0f))
-    .rotateZ((float)java.lang.Math.toRadians(90.0f)));
 	prevPlayerPos.set(player.getWorldLocation());
+
+	skinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
+	skinny.setLocalTranslation(new Matrix4f().translation(0.0f, 1.0f, -5.0f));
+	skinny.setLocalScale(new Matrix4f().scaling(1.0f));
+	skinnyS.playAnimation("WAVE", 0.3f, AnimatedShape.EndType.LOOP, 0);
+
+	ape = new GameObject(GameObject.root(), apeS, apeTx);
+	ape.setLocalTranslation(new Matrix4f().translation(5.0f, 1.0f, -5.0f));
+	ape.setLocalScale(new Matrix4f().scaling(0.01f));
+	ape.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+    .rotationX((float)java.lang.Math.toRadians(90.0f))
+    .rotateZ((float)java.lang.Math.toRadians(180.0f)));
+	apeS.playAnimation("RUN", 0.25f, AnimatedShape.EndType.LOOP, 0);
+
+	apePlasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+	apePlasmaRifle.setLocalTranslation(new Matrix4f().translation(-0.05f,  1.5f, 0.7f));
+	apePlasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f)));
+	apePlasmaRifle.setLocalScale(new Matrix4f().scaling(0.5f));
+
+	apePlasmaRifle.setParent(ape);
+	apePlasmaRifle.propagateTranslation(true);
+	apePlasmaRifle.propagateRotation(true);
+	apePlasmaRifle.propagateScale(true);
+	apePlasmaRifle.applyParentRotationToPosition(true);
 
 	ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
 	ammoPickup.setLocalTranslation( new Matrix4f().translation(ammoBasePos.x, ammoBasePos.y, ammoBasePos.z));
@@ -349,8 +390,6 @@ public void buildObjects()
 	terr.getRenderStates().setTiling(1);
 
 	applyMapSelection();
-
-
 }
 
 	@Override
@@ -559,6 +598,12 @@ public void buildObjects()
 		orbitCam.updateCameraPosition();
 
 		if (playerS != null) playerS.updateAnimation();
+		if (skinnyS != null) skinnyS.updateAnimation();
+		if (apeS != null) apeS.updateAnimation();
+
+		//snap to terrain 
+		snapToTerrain(skinny);
+		snapToTerrain(ape);
 
 		Vector3f camN = cam.getN();
 		float flatX = camN.x;

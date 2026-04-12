@@ -1,0 +1,11 @@
+Model Information:
+* title:	APEMAN FUTURA(STARGATE)
+* source:	https://sketchfab.com/3d-models/apeman-futurastargate-5c334a1f9d8e4f87b62be7e62e71606e
+* author:	VanadiumStudio (https://sketchfab.com/vjprojects2020)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "APEMAN FUTURA(STARGATE)" (https://sketchfab.com/3d-models/apeman-futurastargate-5c334a1f9d8e4f87b62be7e62e71606e) by VanadiumStudio (https://sketchfab.com/vjprojects2020) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

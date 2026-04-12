@@ -1,0 +1,8 @@
+Model Information:
+* title:	Skinwalker Creature
+* source:	https://sketchfab.com/3d-models/skinwalker-creature-1536d87ab17b4d9e889d9195f5ceca0b
+* author:	Regulator (https://sketchfab.com/A2555)
+
+Model License:
+* license type:	SKETCHFAB Standard (https://sketchfab.com/licenses)
+* requirements:	Under basic restrictions, use worldwide, on all types of media, commercially or not, and in all types of derivative works
