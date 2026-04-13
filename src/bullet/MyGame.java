@@ -72,16 +72,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private Vector3f playerStartPos = new Vector3f(0.0f, 0.75f, 0.0f);
 	private float playerScale = 0.01f;
 	private Vector3f ammoBasePos = new Vector3f(3.0f, 1.0f, 0.0f);
-	private float ammoScale = 1.0f;
+	private float ammoScale = 0.3f;
 	private Vector3f healthBasePos = new Vector3f(-3.0f, 1.0f, 0.0f);
-	private float healthScale = 1.0f;
+	private float healthScale = 0.3f;
 
 	//Movement Variables
 	private static final float maxClimbSlope = 1.2f;
 	private static final float maxStepHeight = 0.5f;
 
 	// plasma rifle transform
-	private Vector3f plasmaRiflePos = new Vector3f(0.18f, 1.10f, 0.28f);
+	private Vector3f plasmaRiflePos = new Vector3f (-0.2f,  1.4f, 0.65f);// old hip vector: (0.18f, 1.10f, 0.28f);
 	private float plasmaRifleScale = 0.5f;
 	private float plasmaRifleRotY = 0.0f; // degrees
 
@@ -114,6 +114,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	
 	//skyboxes
 	private int spaceSkyBox, fluffySkyBox;
+
+	//lights
+	private Light ammoLight;
+	private Light healthLight;
 	
 	//map selection
 	private int mapSelection = 0;
@@ -280,6 +284,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			case 0:
 				playerS = new AnimatedShape("Robot.rkm", "Robot.rks");
 				playerS.loadAnimation("RUN", "RobotRun.rka");
+				playerS.loadAnimation("STAND", "RobotStanding.rka");
 				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
 				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 				ghostS = playerS;
@@ -337,6 +342,9 @@ public void buildObjects()
 	player.setLocalTranslation(new Matrix4f().translation(playerStartPos.x, playerStartPos.y, playerStartPos.z));
 	player.setLocalScale(new Matrix4f().scaling(playerScale));
 	prevPlayerPos.set(player.getWorldLocation());
+	player.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+    .rotationY((float)java.lang.Math.toRadians(270.0f)));
+	playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
 
 	skinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
 	skinny.setLocalTranslation(new Matrix4f().translation(0.0f, 1.0f, -5.0f));
@@ -369,6 +377,8 @@ public void buildObjects()
 	healthPickup = new GameObject(GameObject.root(), healthS, healthTx);
 	healthPickup.setLocalTranslation( new Matrix4f().translation(healthBasePos.x, healthBasePos.y, healthBasePos.z));
 	healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
+	healthPickup.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+    .rotationX((float)java.lang.Math.toRadians(90.0f)));
 
 	// ---------- plasma rifle attached to player ----------
 	plasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
@@ -401,14 +411,66 @@ public void buildObjects()
 
 				mainLight = new Light();
 				mainLight.setLocation(new Vector3f(0.0f, 0.0f, 0.0f));
+
 				engine.getSceneGraph().addLight(mainLight);
+
+				ammoLight = new Light();
+				ammoLight.setDiffuse(0.2f, 1.0f, 0.2f);
+				ammoLight.setSpecular(0.2f, 0.6f, 1.0f);
+				ammoLight.setAmbient(0.05f, 0.1f, 0.2f);
+
+				ammoLight.setType(Light.LightType.SPOTLIGHT);
+				ammoLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+				ammoLight.setCutoffAngle(20.0f);
+				ammoLight.setOffAxisExponent(10.0f);
+
+				engine.getSceneGraph().addLight(ammoLight);
+
+				healthLight = new Light();
+				healthLight.setDiffuse (0.2f, 0.6f, 1.0f);
+				healthLight.setSpecular(0.2f, 1.0f, 0.2f);
+				healthLight.setAmbient(0.05f, 0.2f, 0.05f);
+
+				healthLight.setType(Light.LightType.SPOTLIGHT);
+				healthLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+				healthLight.setCutoffAngle(20.0f);
+				healthLight.setOffAxisExponent(10.0f);
+
+				engine.getSceneGraph().addLight(healthLight);
+
 				break;
 			case 1:
 				Light.setGlobalAmbient(0.5f, 0.5f, 0.5f);
 
 				mainLight = new Light();
 				mainLight.setLocation(new Vector3f(0.0f, 0.0f, 0.0f));
+
 				engine.getSceneGraph().addLight(mainLight);
+
+				ammoLight = new Light();
+				ammoLight.setDiffuse(0.2f, 1.0f, 0.2f);
+				ammoLight.setSpecular(0.2f, 0.6f, 1.0f);
+				ammoLight.setAmbient(0.05f, 0.1f, 0.2f);
+
+				ammoLight.setType(Light.LightType.SPOTLIGHT);
+				ammoLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+				ammoLight.setCutoffAngle(20.0f);
+				ammoLight.setOffAxisExponent(10.0f);
+
+				engine.getSceneGraph().addLight(ammoLight);
+
+				healthLight = new Light();
+				healthLight.setDiffuse (0.2f, 0.6f, 1.0f);
+				healthLight.setSpecular(0.2f, 1.0f, 0.2f);
+				healthLight.setAmbient(0.05f, 0.2f, 0.05f);
+
+				healthLight.setType(Light.LightType.SPOTLIGHT);
+				healthLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+				healthLight.setCutoffAngle(20.0f);
+				healthLight.setOffAxisExponent(10.0f);
+
+				engine.getSceneGraph().addLight(healthLight);
+
 				break;
 		}
 	}
@@ -635,17 +697,17 @@ public void buildObjects()
 					isSwapping = false;
 
 					if (isMoving)
-						playerS.playAnimation("RUN", 0.05f, AnimatedShape.EndType.LOOP, 0);
+						playerS.playAnimation("RUN", 0.03f, AnimatedShape.EndType.LOOP, 0);
 					else
-						playerS.stopAnimation();
+						playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
 				}
 			}
 			else
 			{
 				if (isMoving && !wasMoving)
-					playerS.playAnimation("RUN", 1.0f, AnimatedShape.EndType.LOOP, 0);
+					playerS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
 				else if (!isMoving && wasMoving)
-					playerS.stopAnimation();
+					playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
 			}
 		}
 
@@ -666,21 +728,31 @@ public void buildObjects()
 		// animate ammo pickup: bob up and down
 		ammoBobTime += dt;
 		float bobOffset = (float)java.lang.Math.sin(ammoBobTime * 2.0f) * 0.25f;
+		float terrainY = terr.getHeight(ammoBasePos.x, ammoBasePos.z);
 		ammoPickup.setLocalTranslation(
 			new Matrix4f().translation(
 				ammoBasePos.x,
-				ammoBasePos.y + bobOffset,
+				terrainY + 0.75f + bobOffset,
 				ammoBasePos.z));
 
 		// animate health pickup: rotate around Y axis
 		healthSpin += dt * 45.0f; // degrees per second
+		terrainY = terr.getHeight(healthBasePos.x, healthBasePos.z);
 		healthPickup.setLocalRotation(
 			new Matrix4f().rotationY((float)java.lang.Math.toRadians(healthSpin)));
 		healthPickup.setLocalTranslation(
 			new Matrix4f().translation(
 				healthBasePos.x,
-				healthBasePos.y,
+				terrainY + 0.75f,
 				healthBasePos.z));
+
+		if (ammoPickup != null && ammoLight != null) {
+			ammoLight.setLocation(ammoPickup.getWorldLocation());
+		}
+
+		if (healthPickup != null && healthLight != null) {
+			healthLight.setLocation(healthPickup.getWorldLocation());
+		}
 	}
 
 	@Override
