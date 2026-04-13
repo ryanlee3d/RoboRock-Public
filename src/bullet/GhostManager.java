@@ -6,6 +6,8 @@ import org.joml.*;
 
 import tage.*;
 
+import tage.shapes.*;
+
 public class GhostManager
 {
     private MyGame game;
@@ -32,7 +34,7 @@ public class GhostManager
 
         GhostAvatar ghost = new GhostAvatar(id, s, t, pos);
 
-        Matrix4f scale = new Matrix4f().scaling(0.25f);
+        Matrix4f scale = new Matrix4f().scaling(game.getPlayerScale());
         ghost.setLocalScale(scale);
 
         ghostAvs.add(ghost);
@@ -78,6 +80,14 @@ public class GhostManager
             // from the first move we see.
             System.out.println("Move arrived before create for ghost" + id + "; creating ghost from move packet.");
             createGhost(id, pos);
+        }
+    }
+
+    public void updateGhostAnimations(float dt)
+    {
+        for (GhostAvatar g : ghostAvs)
+        {
+            g.update(dt);
         }
     }
 }

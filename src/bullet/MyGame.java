@@ -153,6 +153,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	public ObjShape getGhostShape() { return ghostS; }
 	public TextureImage getGhostTexture() { return ghostT; }
 	public GhostManager getGhostManager() { return gm; }
+	public float getPlayerScale() { return playerScale; }
 	public Engine getEngine() { return engine; }
 	
 	//setter functions
@@ -170,7 +171,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	public void setIsConnected(boolean value){isClientConnected = value; }
 
 	// ghost rendering
-	private ObjShape ghostS;
+	private AnimatedShape ghostS;
 	private TextureImage ghostT;
 	
 	//networking logic
@@ -312,7 +313,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				playerS.loadAnimation("STAND", "RobotStanding.rka");
 				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
 				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
-				ghostS = playerS;
+				
+				ghostS = new AnimatedShape("Robot.rkm", "Robot.rks");
+				ghostS.loadAnimation("RUN", "RobotRun.rka");
+				ghostS.loadAnimation("STAND", "RobotStanding.rka");
+				ghostS.loadAnimation("SWAP", "RobotSwapGun.rka");
+				ghostS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 
 				skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
 				skinnyS.loadAnimation("WAVE", "wave.rka");
@@ -329,7 +335,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				playerS.loadAnimation("RUN", "RobotRun.rka");
 				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
 				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
-				ghostS = playerS;
+
+				ghostS = new AnimatedShape("Robot.rkm", "Robot.rks");
+				ghostS.loadAnimation("RUN", "RobotRun.rka");
+				ghostS.loadAnimation("STAND", "RobotStanding.rka");
+				ghostS.loadAnimation("SWAP", "RobotSwapGun.rka");
+				ghostS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 
 				ammoS = new ImportedModel("ammo.obj");
 				healthS = new ImportedModel("health.obj");
@@ -710,6 +721,7 @@ public void buildObjects()
 		orbitCam.updateCameraPosition();
 
 		if (playerS != null) playerS.updateAnimation();
+		if (gm != null) gm.updateGhostAnimations(dt);
 		if (skinnyS != null) skinnyS.updateAnimation();
 		if (apeS != null) apeS.updateAnimation();
 
