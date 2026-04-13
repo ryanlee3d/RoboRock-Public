@@ -55,6 +55,31 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private boolean isSwapping = false;
 	private Vector3f prevPlayerPos = new Vector3f(0,0,0);
 
+	// player stats
+	private int pHealth = 100;
+	private int pAmmo = 10;
+
+	private final int pHealthMin = 0;
+	private final int pHealthMax = 150;
+	private final int pAmmoMin = 0;
+	private final int pAmmoMax = 30;
+
+	// pickup respawn state
+	private boolean ammoActive = true;
+	private boolean healthActive = true;
+	private float ammoRespawnTimer = 0.0f;
+	private float healthRespawnTimer = 0.0f;
+	private final float pickupRespawnTime = 30.0f;
+
+	// pickup collision tuning
+	private final float pickupCollisionRange = 1.5f;
+	private final float hiddenPickupScale = 0.0001f;
+
+	// audio
+	private tage.audio.IAudioManager audioMgr;
+	private tage.audio.Sound hPsound;
+	private tage.audio.Sound aPsound;
+
 	// adjust this if the swap animation is longer/shorter
 	private float swapTimer = 0.0f;
 	private final float swapDuration = 0.8f;
@@ -504,6 +529,28 @@ public void buildObjects()
 		overCamera.setN(new Vector3f(0, -1, 0));
 	}
 
+	private void initAudio()
+	{
+		audioMgr = engine.getAudioManager();
+		if (audioMgr == null)
+		{
+			System.out.println("Audio manager not available from engine.");
+			return;
+		}
+
+		tage.audio.AudioResource healthRes =
+			audioMgr.createAudioResource("healthPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+
+		tage.audio.AudioResource ammoRes =
+			audioMgr.createAudioResource("ammoPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+
+		hPsound = new tage.audio.Sound(healthRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+		aPsound = new tage.audio.Sound(ammoRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+
+		hPsound.initialize(audioMgr);
+		aPsound.initialize(audioMgr);
+	}
+
 	@Override
 	public void initializeGame()
 	{
@@ -627,6 +674,9 @@ public void buildObjects()
 			
 		//setup networking
 		setupNetworking();
+
+		//setup audio
+		initAudio();
 	}
 
 	@Override
@@ -683,6 +733,8 @@ public void buildObjects()
 		Vector3f currentPos = player.getWorldLocation();
 		float moveDist = currentPos.distance(prevPlayerPos);
 
+		handlePickupCollisions(dt);
+
 		// small threshold so tiny float changes do not count as movement
 		isMoving = moveDist > 0.001f;
 
@@ -720,10 +772,17 @@ public void buildObjects()
 		camOver.setV(new Vector3f(0, 0, -1));
 		camOver.setN(new Vector3f(0, -1, 0));
 
-		// HUD that was brought over from A2
+		String healthStr = "Health: " + pHealth;
+		String ammoStr = "Ammo: " + pAmmo;
 		String posStr = String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z);
-		Vector3f hudColor = new Vector3f(1, 1, 1);
-		engine.getHUDmanager().setHUD1(posStr, hudColor, 15, 15);
+
+		Vector3f healthColor = new Vector3f(0, 1, 0);   // green
+		Vector3f ammoColor = new Vector3f(1, 1, 1);     // white
+		Vector3f posColor = new Vector3f(1, 1, 1);      // white
+
+		engine.getHUDmanager().setHUD1(healthStr, healthColor, 15, 660);
+		engine.getHUDmanager().setHUD2(ammoStr, ammoColor, 15, 630);
+		engine.getHUDmanager().setHUD3(posStr, posColor, 15, 15);
 
 		// animate ammo pickup: bob up and down
 		ammoBobTime += dt;
@@ -807,6 +866,10 @@ public void buildObjects()
                     mouseModeInitiated = false;
                     isRecentering = false;
                     isSwapping = false;
+					if (hPsound != null && audioMgr != null)
+						hPsound.release(audioMgr);
+					if (aPsound != null && audioMgr != null)
+						aPsound.release(audioMgr);
                     shutdown();
                     System.exit(0);
                     return;
@@ -1011,56 +1074,171 @@ public void buildObjects()
 			ohPanZ = 0.0f;
 		}
 	}
+
+	// Player health and ammo management
+	public void setPlayerHealth(int value)
+	{
+		pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
+	}
+
+	public void setPlayerAmmo(int value)
+	{
+		pAmmo = java.lang.Math.max(pAmmoMin, java.lang.Math.min(value, pAmmoMax));
+	}
+
+	public void addPlayerHealth(int amount)
+	{
+		setPlayerHealth(pHealth + amount);
+	}
+
+	public void addPlayerAmmo(int amount)
+	{
+		setPlayerAmmo(pAmmo + amount);
+	}
+
+	public int getPlayerHealth()
+	{
+		return pHealth;
+	}
+
+	public int getPlayerAmmo()
+	{
+		return pAmmo;
+	}
+
+	private void hideAmmoPickup()
+	{
+		ammoActive = false;
+		ammoRespawnTimer = pickupRespawnTime;
+
+		if (ammoPickup != null)
+			ammoPickup.setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
+	}
+
+	private void showAmmoPickup()
+	{
+		ammoActive = true;
+
+		if (ammoPickup != null)
+			ammoPickup.setLocalScale(new Matrix4f().scaling(ammoScale));
+	}
+
+	private void hideHealthPickup()
+	{
+		healthActive = false;
+		healthRespawnTimer = pickupRespawnTime;
+
+		if (healthPickup != null)
+			healthPickup.setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
+	}
+
+	private void showHealthPickup()
+	{
+		healthActive = true;
+
+		if (healthPickup != null)
+			healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
+	}
+
+	private void handlePickupCollisions(float dt)
+	{
+		if (player == null) return;
+
+		Vector3f playerPos = player.getWorldLocation();
+
+		if (!ammoActive)
+		{
+			ammoRespawnTimer -= dt;
+			if (ammoRespawnTimer <= 0.0f)
+			{
+				ammoRespawnTimer = 0.0f;
+				showAmmoPickup();
+			}
+		}
+
+		if (!healthActive)
+		{
+			healthRespawnTimer -= dt;
+			if (healthRespawnTimer <= 0.0f)
+			{
+				healthRespawnTimer = 0.0f;
+				showHealthPickup();
+			}
+		}
+
+		if (ammoActive && ammoPickup != null)
+		{
+			if (playerPos.distance(ammoPickup.getWorldLocation()) <= pickupCollisionRange)
+			{
+				addPlayerAmmo(10);
+				hideAmmoPickup();
+
+				if (aPsound != null)
+					aPsound.play();
+			}
+		}
+
+		if (healthActive && healthPickup != null)
+		{
+			if (playerPos.distance(healthPickup.getWorldLocation()) <= pickupCollisionRange)
+			{
+				setPlayerHealth(pHealthMax);
+				hideHealthPickup();
+
+				if (hPsound != null)
+					hPsound.play();
+			}
+		}
+	}
 	
 	//Calculates the angle of the next portion of terrain to ensure player cannot run up slopes that are too steep
 	public boolean canMoveOnTerrain(Vector3f from, Vector3f to)
-{
-    if (terr == null) return true;
+	{
+		if (terr == null) return true;
 
-    float currentH = terr.getHeight(from.x(), from.z());
-    float nextH = terr.getHeight(to.x(), to.z());
+		float currentH = terr.getHeight(from.x(), from.z());
+		float nextH = terr.getHeight(to.x(), to.z());
 
-    float rise = nextH - currentH;
-    float run = (float)Math.sqrt(
-        (to.x() - from.x()) * (to.x() - from.x()) +
-        (to.z() - from.z()) * (to.z() - from.z())
-    );
+		float rise = nextH - currentH;
+		float run = (float)Math.sqrt(
+			(to.x() - from.x()) * (to.x() - from.x()) +
+			(to.z() - from.z()) * (to.z() - from.z())
+		);
 
-    if (run < 0.0001f) return true;
+		if (run < 0.0001f) return true;
 
-    float slope = rise / run;
+		float slope = rise / run;
 
-    if (rise > maxStepHeight) return false;      // too big a step upward
-    if (slope > maxClimbSlope) return false; // too steep uphill
+		if (rise > maxStepHeight) return false;      // too big a step upward
+		if (slope > maxClimbSlope) return false; // too steep uphill
 
-    return true;
-}
-private void applyMapSelection()
-{
-    if (terr == null) return;
+		return true;
+	}
+	private void applyMapSelection()
+	{
+		if (terr == null) return;
 
-    switch (mapSelection)
-    {
-        case 0:
-            terr.setTextureImage(terrTxMap0);
-            terr.setHeightMap(heightMap0);
-			(engine.getSceneGraph()).setActiveSkyBoxTexture(fluffySkyBox); //sets the scene to this skybox
-            terr.getRenderStates().setTileFactor(10);
-            break;
+		switch (mapSelection)
+		{
+			case 0:
+				terr.setTextureImage(terrTxMap0);
+				terr.setHeightMap(heightMap0);
+				(engine.getSceneGraph()).setActiveSkyBoxTexture(fluffySkyBox); //sets the scene to this skybox
+				terr.getRenderStates().setTileFactor(10);
+				break;
 
-        case 1:
-            terr.setTextureImage(terrTxMap1);
-            terr.setHeightMap(heightMap1);
-			(engine.getSceneGraph()).setActiveSkyBoxTexture(spaceSkyBox); //sets the scene to this skybox
-            terr.getRenderStates().setTileFactor(100);
-            break;
+			case 1:
+				terr.setTextureImage(terrTxMap1);
+				terr.setHeightMap(heightMap1);
+				(engine.getSceneGraph()).setActiveSkyBoxTexture(spaceSkyBox); //sets the scene to this skybox
+				terr.getRenderStates().setTileFactor(100);
+				break;
 
-        default:
-            terr.setTextureImage(terrTxMap0);
-            terr.setHeightMap(heightMap0);
-            terr.getRenderStates().setTileFactor(10);
-            break;
-    }
-}
-
+			default:
+				terr.setTextureImage(terrTxMap0);
+				terr.setHeightMap(heightMap0);
+				terr.getRenderStates().setTileFactor(10);
+				break;
+		}
+	}
 }
