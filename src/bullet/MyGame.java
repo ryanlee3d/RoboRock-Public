@@ -44,7 +44,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private IAction restartGame;
 
 	//game objects
-	private GameObject player, skinny, ape, ammoPickup, healthPickup, plasmaRifle, apePlasmaRifle, terr;
+	private GameObject player, skinny, ape, ammoPickup, healthPickup, knife, pistol, plasmaRifle, apePlasmaRifle, terr;
 
 	// shapes for animated objects
 	private AnimatedShape playerS, skinnyS, apeS;
@@ -85,9 +85,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private final float swapDuration = 0.8f;
 
 	// shapes and textures for game objects
-	private ObjShape ammoS, terrS, healthS, plasmaRifleS;
+	private ObjShape ammoS, terrS, healthS, plasmaRifleS, knifeS, pistolS;
 
-	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, heightMap0, heightMap1, skinnyTx, apeTx;
+	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, knifeTx, pistolTx, heightMap0, heightMap1, skinnyTx, apeTx;
 
 	//pickup object animation values
 	private float ammoBobTime = 0.0f;
@@ -105,10 +105,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private static final float maxClimbSlope = 1.2f;
 	private static final float maxStepHeight = 0.5f;
 
-	// plasma rifle transform
-	private Vector3f plasmaRiflePos = new Vector3f (-0.2f,  1.4f, 0.65f);// old hip vector: (0.18f, 1.10f, 0.28f);
-	private float plasmaRifleScale = 0.5f;
-	private float plasmaRifleRotY = 0.0f; // degrees
+		// weapon cycling
+	private int currentWeaponIndex = 0;   // 0 = knife, 1 = pistol, 2 = plasma rifle
+
+	// shared first-pass weapon transform
+	private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f); // old hip vector: (0.18f, 1.10f, 0.28f);
+	private float weaponScale = 0.5f;
+	private float weaponRotY = 0.0f;
+
+	// hidden scale for inactive weapons
+	private final float hiddenWeaponScale = 0.0001f;
 
 	//lighting
 	private Light mainLight;
@@ -264,6 +270,44 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		obj.setLocalLocation(new Vector3f(pos.x, height, pos.z));
 	}
 
+	private void attachWeaponToPlayer(GameObject weapon)
+	{
+		if (weapon == null || player == null) return;
+
+		weapon.setParent(player);
+		weapon.propagateTranslation(true);
+		weapon.propagateRotation(true);
+		weapon.propagateScale(true);
+		weapon.applyParentRotationToPosition(true);
+	}
+
+	private void updateWeaponVisibility()
+	{
+		if (knife != null)
+		{
+			if (currentWeaponIndex == 0)
+				knife.setLocalScale(new Matrix4f().scaling(weaponScale));
+			else
+				knife.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
+		}
+
+		if (pistol != null)
+		{
+			if (currentWeaponIndex == 1)
+				pistol.setLocalScale(new Matrix4f().scaling(weaponScale));
+			else
+				pistol.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
+		}
+
+		if (plasmaRifle != null)
+		{
+			if (currentWeaponIndex == 2)
+				plasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale));
+			else
+				plasmaRifle.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
+		}
+	}
+
 	public MyGame(String serverAddress, int serverPort, String protocol)
 	{
 		super();
@@ -328,6 +372,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 				ammoS = new ImportedModel("ammo.obj");
 				healthS = new ImportedModel("health.obj");
+				knifeS = new ImportedModel("knife.obj");
+				pistolS = new ImportedModel("pistol.obj");
 				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
 				break;
 			case 1:
@@ -345,6 +391,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				ammoS = new ImportedModel("ammo.obj");
 				healthS = new ImportedModel("health.obj");
 				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
+				knifeS = new ImportedModel("knife.obj");
+				pistolS = new ImportedModel("pistol.obj");
 				break;
 		}
 	}
@@ -362,7 +410,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     	ammoTx = new TextureImage("ammo.jpg");
     	healthTx = new TextureImage("health.jpg");
     	plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
-
+		knifeTx = new TextureImage("knife.jpg");
+		pistolTx = new TextureImage("pistol.jpg");
     	terrTxMap0 = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
     	terrTxMap1 = new TextureImage("airbase_radar_panels.jpg");
 
@@ -416,16 +465,30 @@ public void buildObjects()
 	healthPickup.getRenderStates().setModelOrientationCorrection((new Matrix4f())
     .rotationX((float)java.lang.Math.toRadians(90.0f)));
 
-	// ---------- plasma rifle attached to player ----------
+	// knife
+	knife = new GameObject(GameObject.root(), knifeS, knifeTx);
+	knife.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+	knife.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+	knife.setLocalScale(new Matrix4f().scaling(weaponScale));
+	attachWeaponToPlayer(knife);
+
+	// pistol
+	pistol = new GameObject(GameObject.root(), pistolS, pistolTx);
+	pistol.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+	pistol.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+	pistol.setLocalScale(new Matrix4f().scaling(weaponScale));
+	attachWeaponToPlayer(pistol);
+
+	// plasma rifle
 	plasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
-	plasmaRifle.setLocalTranslation(new Matrix4f().translation(plasmaRiflePos.x, plasmaRiflePos.y, plasmaRiflePos.z));
-	plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(plasmaRifleRotY)));
-	plasmaRifle.setLocalScale(new Matrix4f().scaling(plasmaRifleScale));
-	plasmaRifle.setParent(player);
-	plasmaRifle.propagateTranslation(true);
-	plasmaRifle.propagateRotation(true);
-	plasmaRifle.propagateScale(true);
-	plasmaRifle.applyParentRotationToPosition(true);
+	plasmaRifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+	plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+	plasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale));
+	attachWeaponToPlayer(plasmaRifle);
+
+	// start on knife
+	currentWeaponIndex = 0;
+	updateWeaponVisibility();
 
 	// ---------- terrain ----------
 	terr = new GameObject(GameObject.root(), terrS, terrTxMap0);
@@ -975,8 +1038,17 @@ public void buildObjects()
 	public void mouseWheelMoved(MouseWheelEvent e)
 	{
 		int clicks = e.getWheelRotation();
-		orbitCam.addRadius(clicks * 0.25f);
 
+		if (clicks > 0)
+		{
+			currentWeaponIndex = (currentWeaponIndex + 1) % 3;
+		}
+		else if (clicks < 0)
+		{
+			currentWeaponIndex = (currentWeaponIndex + 2) % 3; // same as -1 mod 3
+		}
+
+		updateWeaponVisibility();
 		playSwapAnimation();
 	}
 
