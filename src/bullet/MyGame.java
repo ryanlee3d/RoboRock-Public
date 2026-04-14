@@ -52,7 +52,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	// player animation values
 	private boolean isMoving = false;
 	private boolean wasMoving = false;
-	private boolean isSwapping = false;
 	private Vector3f prevPlayerPos = new Vector3f(0,0,0);
 
 	// player stats
@@ -79,10 +78,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private tage.audio.IAudioManager audioMgr;
 	private tage.audio.Sound hPsound;
 	private tage.audio.Sound aPsound;
-
-	// adjust this if the swap animation is longer/shorter
-	private float swapTimer = 0.0f;
-	private final float swapDuration = 0.8f;
 
 	// shapes and textures for game objects
 	private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS;
@@ -244,22 +239,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		prevMouseY = centerY;
 	}
 
-	private void playSwapAnimation()
-	{
-		if (isShuttingDown) return;
-		if (playerS == null) return;
-
-		isSwapping = true;
-		swapTimer = swapDuration;
-
-		playerS.stopAnimation();
-
-		if (isMoving)
-			playerS.playAnimation("SWAPRUN", 1.0f, AnimatedShape.EndType.NONE, 1);
-		else
-			playerS.playAnimation("SWAP", 1.0f, AnimatedShape.EndType.NONE, 1);
-	}
-
 	private void snapToTerrain(GameObject obj)
 	{
 		if (obj == null || terr == null) return;
@@ -373,6 +352,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				playerS.loadAnimation("STAND", "RobotStanding.rka");
 				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
 				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
+				
 				
 				ghostS = new AnimatedShape("Robot.rkm", "Robot.rks");
 				ghostS.loadAnimation("RUN", "RobotRun.rka");
@@ -857,26 +837,10 @@ public void buildObjects()
 		// handle swap timing
 		if (playerS != null)
 		{
-			if (isSwapping)
-			{
-				swapTimer -= dt;
-				if (swapTimer <= 0.0f)
-				{
-					isSwapping = false;
-
-					if (isMoving)
-						playerS.playAnimation("RUN", 0.03f, AnimatedShape.EndType.LOOP, 0);
-					else
-						playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
-				}
-			}
-			else
-			{
 				if (isMoving && !wasMoving)
 					playerS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
 				else if (!isMoving && wasMoving)
 					playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
-			}
 		}
 
 		wasMoving = isMoving;
@@ -981,7 +945,6 @@ public void buildObjects()
                     isShuttingDown = true;
                     mouseModeInitiated = false;
                     isRecentering = false;
-                    isSwapping = false;
 					if (hPsound != null && audioMgr != null)
 						hPsound.release(audioMgr);
 					if (aPsound != null && audioMgr != null)
@@ -1090,7 +1053,6 @@ public void buildObjects()
 		}
 
 		updateWeaponVisibility();
-		playSwapAnimation();
 	}
 
 	private class OrbitAzimuthAction extends AbstractInputAction
