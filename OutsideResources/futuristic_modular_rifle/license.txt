@@ -1,0 +1,11 @@
+Model Information:
+* title:	Futuristic Modular Rifle
+* source:	https://sketchfab.com/3d-models/futuristic-modular-rifle-2389f96cfac442b58272a489d7cdd606
+* author:	Ramhat (https://sketchfab.com/Ramhat)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Futuristic Modular Rifle" (https://sketchfab.com/3d-models/futuristic-modular-rifle-2389f96cfac442b58272a489d7cdd606) by Ramhat (https://sketchfab.com/Ramhat) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)

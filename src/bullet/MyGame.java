@@ -44,7 +44,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private IAction restartGame;
 
 	//game objects
-	private GameObject player, skinny, ape, ammoPickup, healthPickup, knife, pistol, plasmaRifle, apePlasmaRifle, terr;
+	private GameObject player, skinny, ape, ammoPickup, healthPickup, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr;
 
 	// shapes for animated objects
 	private AnimatedShape playerS, skinnyS, apeS;
@@ -85,9 +85,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private final float swapDuration = 0.8f;
 
 	// shapes and textures for game objects
-	private ObjShape ammoS, terrS, healthS, plasmaRifleS, knifeS, pistolS;
+	private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS;
 
-	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, knifeTx, pistolTx, heightMap0, heightMap1, skinnyTx, apeTx;
+	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx, heightMap0, heightMap1, skinnyTx, apeTx;
 
 	//pickup object animation values
 	private float ammoBobTime = 0.0f;
@@ -105,8 +105,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private static final float maxClimbSlope = 1.2f;
 	private static final float maxStepHeight = 0.5f;
 
-		// weapon cycling
-	private int currentWeaponIndex = 0;   // 0 = knife, 1 = pistol, 2 = plasma rifle
+	// weapon cycling
+	private int currentWeaponIndex = 0;   // 0 = knife, 1 = pistol, 2 = plasma rifle, 3 = rifle, 4 = shotgun
 
 	// shared first-pass weapon transform
 	private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f); // old hip vector: (0.18f, 1.10f, 0.28f);
@@ -306,6 +306,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 			else
 				plasmaRifle.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
 		}
+
+		if (rifle != null)
+		{
+			if (currentWeaponIndex == 3)
+				rifle.setLocalScale(new Matrix4f().scaling(weaponScale));
+			else
+				rifle.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
+		}
+
+		if (shotGun != null)
+		{
+			if (currentWeaponIndex == 4)
+				shotGun.setLocalScale(new Matrix4f().scaling(weaponScale));
+			else
+				shotGun.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
+		}
 	}
 
 	public MyGame(String serverAddress, int serverPort, String protocol)
@@ -375,6 +391,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				knifeS = new ImportedModel("knife.obj");
 				pistolS = new ImportedModel("pistol.obj");
 				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
+				rifleS = new ImportedModel("rifle.obj");
+				shotGunS = new ImportedModel("shotGun.obj");
 				break;
 			case 1:
 				playerS = new AnimatedShape("Robot.rkm", "Robot.rks");
@@ -391,6 +409,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				ammoS = new ImportedModel("ammo.obj");
 				healthS = new ImportedModel("health.obj");
 				plasmaRifleS = new ImportedModel("plasmaRifle.obj");
+				rifleS = new ImportedModel("rifle.obj");
+				shotGunS = new ImportedModel("shotGun.obj");
 				knifeS = new ImportedModel("knife.obj");
 				pistolS = new ImportedModel("pistol.obj");
 				break;
@@ -410,6 +430,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     	ammoTx = new TextureImage("ammo.jpg");
     	healthTx = new TextureImage("health.jpg");
     	plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
+		rifleTx = new TextureImage("rifle.jpg");
+		shotGunTx = new TextureImage("shotGun.jpg");
 		knifeTx = new TextureImage("knife.jpg");
 		pistolTx = new TextureImage("pistol.jpg");
     	terrTxMap0 = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
@@ -485,6 +507,23 @@ public void buildObjects()
 	plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
 	plasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale));
 	attachWeaponToPlayer(plasmaRifle);
+
+	// rifle
+	rifle = new GameObject(GameObject.root(), rifleS, rifleTx);
+	rifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+	rifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+	rifle.setLocalScale(new Matrix4f().scaling(weaponScale));
+	attachWeaponToPlayer(rifle);
+
+	// shotgun
+	shotGun = new GameObject(GameObject.root(), shotGunS, shotGunTx);
+	shotGun.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+	shotGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+	shotGun.setLocalScale(new Matrix4f().scaling(weaponScale + 100.0f));
+	shotGun.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+    .rotationX((float)java.lang.Math.toRadians(90.0f))
+	.rotationY((float)java.lang.Math.toRadians(90.0f)));
+	attachWeaponToPlayer(shotGun);
 
 	// start on knife
 	currentWeaponIndex = 0;
@@ -1041,11 +1080,11 @@ public void buildObjects()
 
 		if (clicks > 0)
 		{
-			currentWeaponIndex = (currentWeaponIndex + 1) % 3;
+			currentWeaponIndex = (currentWeaponIndex + 1) % 5;
 		}
 		else if (clicks < 0)
 		{
-			currentWeaponIndex = (currentWeaponIndex + 2) % 3; // same as -1 mod 3
+			currentWeaponIndex = (currentWeaponIndex + 4) % 5; // same as -1 mod 5
 		}
 
 		updateWeaponVisibility();

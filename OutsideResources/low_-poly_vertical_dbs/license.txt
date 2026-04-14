@@ -1,0 +1,11 @@
+Model Information:
+* title:	low -poly Vertical DBS
+* source:	https://sketchfab.com/3d-models/low-poly-vertical-dbs-709ba08245a24b34b1495e4f46255e9f
+* author:	sanka228qwerty (https://sketchfab.com/sanka228qwerty)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "low -poly Vertical DBS" (https://sketchfab.com/3d-models/low-poly-vertical-dbs-709ba08245a24b34b1495e4f46255e9f) by sanka228qwerty (https://sketchfab.com/sanka228qwerty) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
