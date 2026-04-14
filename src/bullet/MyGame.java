@@ -318,7 +318,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		if (shotGun != null)
 		{
 			if (currentWeaponIndex == 4)
-				shotGun.setLocalScale(new Matrix4f().scaling(weaponScale));
+				shotGun.setLocalScale(new Matrix4f().scaling(weaponScale + 0.8f));
 			else
 				shotGun.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
 		}
@@ -517,12 +517,12 @@ public void buildObjects()
 
 	// shotgun
 	shotGun = new GameObject(GameObject.root(), shotGunS, shotGunTx);
-	shotGun.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+	shotGun.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y - 0.25f, weaponPos.z - 0.2f));
 	shotGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
-	shotGun.setLocalScale(new Matrix4f().scaling(weaponScale + 100.0f));
+	shotGun.setLocalScale(new Matrix4f().scaling(weaponScale));
 	shotGun.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-    .rotationX((float)java.lang.Math.toRadians(90.0f))
-	.rotationY((float)java.lang.Math.toRadians(90.0f)));
+	.rotateY((float)java.lang.Math.toRadians(90.0f))
+    .rotateX((float)java.lang.Math.toRadians(90.0f)));
 	attachWeaponToPlayer(shotGun);
 
 	// start on knife
