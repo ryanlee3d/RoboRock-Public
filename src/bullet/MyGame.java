@@ -513,6 +513,8 @@ public void buildObjects()
 	rifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
 	rifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
 	rifle.setLocalScale(new Matrix4f().scaling(weaponScale));
+	rifle.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+	.rotateX((float)java.lang.Math.toRadians(90.0f)));
 	attachWeaponToPlayer(rifle);
 
 	// shotgun
