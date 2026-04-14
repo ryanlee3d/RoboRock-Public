@@ -106,6 +106,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	// shared first-pass weapon transform
 	private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f); // old hip vector: (0.18f, 1.10f, 0.28f);
 	private float weaponScale = 0.5f;
+	private float knifeWeaponScale = 6f;
 	private float weaponRotY = 0.0f;
 
 	// hidden scale for inactive weapons
@@ -264,10 +265,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	{
 		if (knife != null)
 		{
-			if (currentWeaponIndex == 0)
-				knife.setLocalScale(new Matrix4f().scaling(weaponScale));
-			else
+			if (currentWeaponIndex == 0) {
+				knife.setLocalScale(new Matrix4f().scaling(knifeWeaponScale));
+				knife.getRenderStates().setModelOrientationCorrection((new Matrix4f())
+    			.rotateY((float)java.lang.Math.toRadians(-90.0f)).rotateZ((float)java.lang.Math.toRadians(25.0f)));
+			} else {
 				knife.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
+			}
 		}
 
 		if (pistol != null)
@@ -412,7 +416,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     	plasmaRifleTx = new TextureImage("plasmaRifle.jpg");
 		rifleTx = new TextureImage("rifle.jpg");
 		shotGunTx = new TextureImage("shotGun.jpg");
-		knifeTx = new TextureImage("knife.jpg");
+		knifeTx = new TextureImage("knife.png");
 		pistolTx = new TextureImage("pistol.jpg");
     	terrTxMap0 = new TextureImage("coast_sand_rocks_02_diff_1k.jpg");
     	terrTxMap1 = new TextureImage("airbase_radar_panels.jpg");
