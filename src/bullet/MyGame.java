@@ -44,7 +44,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private IAction restartGame;
 
 	//game objects
-	private GameObject player, skinny, ape, ammoPickup, healthPickup, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr;
+	private GameObject player, skinny, ape, ammoPickup, healthPickup, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
+
+	//instances of game objects for repeat use
+	private GameObject[] smallBuildings = new GameObject[8];
+	private GameObject[] smallBuildings2 = new GameObject[8];
 
 	// shapes for animated objects
 	private AnimatedShape playerS, skinnyS, apeS;
@@ -80,9 +84,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private tage.audio.Sound aPsound;
 
 	// shapes and textures for game objects
-	private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS;
+	private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS;
 
-	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx, heightMap0, heightMap1, skinnyTx, apeTx;
+	private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx, heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx;
 
 	//pickup object animation values
 	private float ammoBobTime = 0.0f;
@@ -357,7 +361,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 				playerS.loadAnimation("SWAP", "RobotSwapGun.rka");
 				playerS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 				
-				
 				ghostS = new AnimatedShape("Robot.rkm", "Robot.rks");
 				ghostS.loadAnimation("RUN", "RobotRun.rka");
 				ghostS.loadAnimation("STAND", "RobotStanding.rka");
@@ -369,6 +372,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 				apeS = new AnimatedShape("ape.rkm", "ape.rks");
 				apeS.loadAnimation("RUN", "apeRun.rka");
+
+				smallBuildingS = new ImportedModel("smallBuilding.obj");
+				smallBuilding2S = new ImportedModel("smallBuilding2.obj");
+				centerBuildingS = new ImportedModel("centerBuilding.obj");
 
 				ammoS = new ImportedModel("ammo.obj");
 				healthS = new ImportedModel("health.obj");
@@ -409,7 +416,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 		skinnyTx = new TextureImage("skinny.jpg");
 
-		apeTx = new TextureImage("ape.jpg"); // or whatever texture name
+		apeTx = new TextureImage("ape.jpg");
+
+		smallBuildingTx = new TextureImage("smallBuilding.jpg");
+		smallBuilding2Tx = new TextureImage("smallBuilding2.jpg");
+		centerBuildingTx = new TextureImage("centerBuilding.jpg");
 
     	ammoTx = new TextureImage("ammo.jpg");
     	healthTx = new TextureImage("health.jpg");
@@ -514,6 +525,56 @@ public void buildObjects()
 	// start on knife
 	currentWeaponIndex = 0;
 	updateWeaponVisibility();
+
+	// center building at terrain center
+	centerBuilding = new GameObject(GameObject.root(), centerBuildingS, centerBuildingTx);
+	centerBuilding.setLocalTranslation(new Matrix4f().translation(0.0f, 0.0f, 0.0f));
+	centerBuilding.setLocalScale(new Matrix4f().scaling(1.5f));
+	snapToTerrain(centerBuilding);
+
+	// 8 smallBuilding positions
+	float[][] sbPositions = {
+		{-55.0f, -40.0f},
+		{-42.0f, -55.0f},
+		{-38.0f,  35.0f},
+		{-25.0f,  52.0f},
+		{ 28.0f, -48.0f},
+		{ 45.0f, -30.0f},
+		{ 50.0f,  22.0f},
+		{ 35.0f,  48.0f}
+	};
+
+	// 8 smallBuilding2 positions
+	float[][] sb2Positions = {
+		{-60.0f,   5.0f},
+		{-48.0f,  28.0f},
+		{-30.0f, -22.0f},
+		{ -8.0f,  45.0f},
+		{ 12.0f, -52.0f},
+		{ 30.0f,   8.0f},
+		{ 52.0f, -12.0f},
+		{ 60.0f,  32.0f}
+	};
+
+	// build 8 smallBuilding objects
+	for (int i = 0; i < smallBuildings.length; i++)
+	{
+		smallBuildings[i] = new GameObject(GameObject.root(), smallBuildingS, smallBuildingTx);
+		smallBuildings[i].setLocalTranslation(
+			new Matrix4f().translation(sbPositions[i][0], 0.0f, sbPositions[i][1]));
+		smallBuildings[i].setLocalScale(new Matrix4f().scaling(5.0f));
+		snapToTerrain(smallBuildings[i]);
+	}
+
+	// build 8 smallBuilding2 objects
+	for (int i = 0; i < smallBuildings2.length; i++)
+	{
+		smallBuildings2[i] = new GameObject(GameObject.root(), smallBuilding2S, smallBuilding2Tx);
+		smallBuildings2[i].setLocalTranslation(
+			new Matrix4f().translation(sb2Positions[i][0], 0.0f, sb2Positions[i][1]));
+		smallBuildings2[i].setLocalScale(new Matrix4f().scaling(5.0f));
+		snapToTerrain(smallBuildings2[i]);
+	}
 
 	// ---------- terrain ----------
 	terr = new GameObject(GameObject.root(), terrS, terrTxMap0);
