@@ -604,7 +604,9 @@ public void buildObjects()
 		smallBuildings[i] = new GameObject(GameObject.root(), smallBuildingS, smallBuildingTx);
 		smallBuildings[i].setLocalTranslation(
 		new Matrix4f().translation(sbPositions[i][0], 0.0f, sbPositions[i][1]));
-		smallBuildings[i].setLocalScale(new Matrix4f().scaling(1.0f));
+		smallBuildings[i].setLocalScale(new Matrix4f().scaling(0.01f));
+		smallBuildings[i].getRenderStates().setModelOrientationCorrection((new Matrix4f())
+		.rotateX((float)java.lang.Math.toRadians(270.0f)));
 		snapToTerrain(smallBuildings[i]);
 	}
 
@@ -614,7 +616,7 @@ public void buildObjects()
 		smallBuildings2[i] = new GameObject(GameObject.root(), smallBuilding2S, smallBuilding2Tx);
 		smallBuildings2[i].setLocalTranslation(
 			new Matrix4f().translation(sb2Positions[i][0], 0.0f, sb2Positions[i][1]));
-		smallBuildings2[i].setLocalScale(new Matrix4f().scaling(1.0f));
+		smallBuildings2[i].setLocalScale(new Matrix4f().scaling(4.0f));
 		snapToTerrain(smallBuildings2[i]);
 	}
 
