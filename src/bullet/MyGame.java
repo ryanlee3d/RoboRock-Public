@@ -44,11 +44,18 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private IAction restartGame;
 
 	//game objects
-	private GameObject player, skinny, ape, ammoPickup, healthPickup, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
+	private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
 
 	//instances of game objects for repeat use
 	private GameObject[] smallBuildings = new GameObject[8];
 	private GameObject[] smallBuildings2 = new GameObject[8];
+	private GameObject[] ammoPickups;
+	private GameObject[] healthPickups;
+
+	private boolean[] ammoActive;
+	private boolean[] healthActive;
+	private float[] ammoRespawnTimers;
+	private float[] healthRespawnTimers;
 
 	// shapes for animated objects
 	private AnimatedShape playerS, skinnyS, apeS;
@@ -67,11 +74,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private final int pAmmoMin = 0;
 	private final int pAmmoMax = 30;
 
-	// pickup respawn state
-	private boolean ammoActive = true;
-	private boolean healthActive = true;
-	private float ammoRespawnTimer = 0.0f;
-	private float healthRespawnTimer = 0.0f;
+	// pickup respawn
 	private final float pickupRespawnTime = 30.0f;
 
 	// pickup collision tuning
@@ -92,12 +95,35 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private float ammoBobTime = 0.0f;
 	private float healthSpin = 0.0f;
 
+	//pickup positions
+	private final Vector3f[] ammoSpawnPositions = 
+	{
+		new Vector3f(-46.0f, 0.0f, -13.0f),
+		new Vector3f(-91.0f, 0.0f,  56.0f),
+		new Vector3f(-58.0f, 0.0f,  89.0f),
+		new Vector3f(-36.0f, 0.0f,  76.0f),
+		new Vector3f( 60.0f, 0.0f, -19.0f),
+		new Vector3f( 94.0f, 0.0f, -36.0f),
+		new Vector3f( 68.0f, 0.0f, -81.0f),
+		new Vector3f( 37.0f, 0.0f,   4.0f)
+	};
+
+	private final Vector3f[] healthSpawnPositions = 
+	{
+		new Vector3f(-44.0f, 0.0f, -11.0f),
+		new Vector3f(-89.0f, 0.0f,  58.0f),
+		new Vector3f(-56.0f, 0.0f,  91.0f),
+		new Vector3f(-29.0f, 0.0f,  30.0f),
+		new Vector3f( 62.0f, 0.0f, -17.0f),
+		new Vector3f( 96.0f, 0.0f, -34.0f),
+		new Vector3f( 70.0f, 0.0f, -79.0f),
+		new Vector3f( 26.0f, 0.0f, -90.0f)
+	};
+
 	//object init locations and scale
 	private Vector3f playerStartPos = new Vector3f(0.0f, 0.75f, 0.0f);
 	private float playerScale = 0.01f;
-	private Vector3f ammoBasePos = new Vector3f(3.0f, 1.0f, 0.0f);
 	private float ammoScale = 0.3f;
-	private Vector3f healthBasePos = new Vector3f(-3.0f, 1.0f, 0.0f);
 	private float healthScale = 0.3f;
 
 	//Movement Variables
@@ -147,8 +173,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	private int spaceSkyBox, fluffySkyBox;
 
 	//lights
-	private Light ammoLight;
-	private Light healthLight;
+	private Light[] ammoLights;
+	private Light[] healthLights;
 	
 	//map selection
 	private int mapSelection = 0;
@@ -418,8 +444,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 		apeTx = new TextureImage("ape.jpg");
 
-		smallBuildingTx = new TextureImage("smallBuilding.jpg");
-		smallBuilding2Tx = new TextureImage("smallBuilding2.jpg");
+		smallBuildingTx = new TextureImage("smallBuilding.png");
+		smallBuilding2Tx = new TextureImage("smallBuilding2.png");
 		centerBuildingTx = new TextureImage("centerBuilding.jpg");
 
     	ammoTx = new TextureImage("ammo.jpg");
@@ -472,15 +498,33 @@ public void buildObjects()
 	apePlasmaRifle.propagateScale(true);
 	apePlasmaRifle.applyParentRotationToPosition(true);
 
-	ammoPickup = new GameObject(GameObject.root(), ammoS, ammoTx);
-	ammoPickup.setLocalTranslation( new Matrix4f().translation(ammoBasePos.x, ammoBasePos.y, ammoBasePos.z));
-	ammoPickup.setLocalScale(new Matrix4f().scaling(ammoScale));
+	ammoPickups = new GameObject[ammoSpawnPositions.length];
+	ammoActive = new boolean[ammoSpawnPositions.length];
+	ammoRespawnTimers = new float[ammoSpawnPositions.length];
 
-	healthPickup = new GameObject(GameObject.root(), healthS, healthTx);
-	healthPickup.setLocalTranslation( new Matrix4f().translation(healthBasePos.x, healthBasePos.y, healthBasePos.z));
-	healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
-	healthPickup.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-    .rotationX((float)java.lang.Math.toRadians(90.0f)));
+	for (int i = 0; i < ammoSpawnPositions.length; i++)
+	{
+		ammoPickups[i] = new GameObject(GameObject.root(), ammoS, ammoTx);
+		ammoPickups[i].setLocalTranslation(
+			new Matrix4f().translation(ammoSpawnPositions[i].x, 0.0f, ammoSpawnPositions[i].z));
+		ammoPickups[i].setLocalScale(new Matrix4f().scaling(ammoScale));
+		ammoActive[i] = true;
+	}
+
+	healthPickups = new GameObject[healthSpawnPositions.length];
+	healthActive = new boolean[healthSpawnPositions.length];
+	healthRespawnTimers = new float[healthSpawnPositions.length];
+
+	for (int i = 0; i < healthSpawnPositions.length; i++)
+	{
+		healthPickups[i] = new GameObject(GameObject.root(), healthS, healthTx);
+		healthPickups[i].setLocalTranslation(
+			new Matrix4f().translation(healthSpawnPositions[i].x, 0.0f, healthSpawnPositions[i].z));
+		healthPickups[i].setLocalScale(new Matrix4f().scaling(healthScale));
+		healthPickups[i].getRenderStates().setModelOrientationCorrection(
+			(new Matrix4f()).rotationX((float)java.lang.Math.toRadians(90.0f)));
+		healthActive[i] = true;
+	}
 
 	// knife
 	knife = new GameObject(GameObject.root(), knifeS, knifeTx);
@@ -532,28 +576,26 @@ public void buildObjects()
 	centerBuilding.setLocalScale(new Matrix4f().scaling(1.5f));
 	snapToTerrain(centerBuilding);
 
-	// 8 smallBuilding positions
 	float[][] sbPositions = {
-		{-55.0f, -40.0f},
-		{-42.0f, -55.0f},
-		{-38.0f,  35.0f},
-		{-25.0f,  52.0f},
-		{ 28.0f, -48.0f},
-		{ 45.0f, -30.0f},
-		{ 50.0f,  22.0f},
-		{ 35.0f,  48.0f}
+		{-52.0f,  72.0f},
+		{ 48.0f, -65.0f},
+		{ 79.0f, -21.0f},
+		{-83.0f,  39.0f},
+		{-18.0f,  40.0f},
+		{ 20.0f, -38.0f},
+		{ 24.0f,   5.0f},
+		{ 28.0f,  38.0f}
 	};
 
-	// 8 smallBuilding2 positions
 	float[][] sb2Positions = {
-		{-60.0f,   5.0f},
-		{-48.0f,  28.0f},
-		{-30.0f, -22.0f},
-		{ -8.0f,  45.0f},
-		{ 12.0f, -52.0f},
-		{ 30.0f,   8.0f},
-		{ 52.0f, -12.0f},
-		{ 60.0f,  32.0f}
+		{ 78.0f, -37.0f},
+		{-79.0f,  16.0f},
+		{-50.0f,  51.0f},
+		{-40.0f,  22.0f},
+		{-24.0f, -18.0f},
+		{ -5.0f,  35.0f},
+		{ 10.0f, -42.0f},
+		{ 44.0f, -10.0f}
 	};
 
 	// build 8 smallBuilding objects
@@ -561,8 +603,8 @@ public void buildObjects()
 	{
 		smallBuildings[i] = new GameObject(GameObject.root(), smallBuildingS, smallBuildingTx);
 		smallBuildings[i].setLocalTranslation(
-			new Matrix4f().translation(sbPositions[i][0], 0.0f, sbPositions[i][1]));
-		smallBuildings[i].setLocalScale(new Matrix4f().scaling(5.0f));
+		new Matrix4f().translation(sbPositions[i][0], 0.0f, sbPositions[i][1]));
+		smallBuildings[i].setLocalScale(new Matrix4f().scaling(1.0f));
 		snapToTerrain(smallBuildings[i]);
 	}
 
@@ -572,7 +614,7 @@ public void buildObjects()
 		smallBuildings2[i] = new GameObject(GameObject.root(), smallBuilding2S, smallBuilding2Tx);
 		smallBuildings2[i].setLocalTranslation(
 			new Matrix4f().translation(sb2Positions[i][0], 0.0f, sb2Positions[i][1]));
-		smallBuildings2[i].setLocalScale(new Matrix4f().scaling(5.0f));
+		smallBuildings2[i].setLocalScale(new Matrix4f().scaling(1.0f));
 		snapToTerrain(smallBuildings2[i]);
 	}
 
@@ -599,30 +641,35 @@ public void buildObjects()
 
 				engine.getSceneGraph().addLight(mainLight);
 
-				ammoLight = new Light();
-				ammoLight.setDiffuse(0.2f, 1.0f, 0.2f);
-				ammoLight.setSpecular(0.2f, 0.6f, 1.0f);
-				ammoLight.setAmbient(0.05f, 0.1f, 0.2f);
+				ammoLights = new Light[ammoSpawnPositions.length];
+				for (int i = 0; i < ammoLights.length; i++)
+				{
+					ammoLights[i] = new Light();
+					ammoLights[i].setDiffuse(0.2f, 1.0f, 0.2f);
+					ammoLights[i].setSpecular(0.2f, 0.6f, 1.0f);
+					ammoLights[i].setAmbient(0.05f, 0.1f, 0.2f);
+					ammoLights[i].setType(Light.LightType.SPOTLIGHT);
+					ammoLights[i].setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+					ammoLights[i].setCutoffAngle(20.0f);
+					ammoLights[i].setOffAxisExponent(10.0f);
 
-				ammoLight.setType(Light.LightType.SPOTLIGHT);
-				ammoLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
-				ammoLight.setCutoffAngle(20.0f);
-				ammoLight.setOffAxisExponent(10.0f);
+					engine.getSceneGraph().addLight(ammoLights[i]);
+				}
 
-				engine.getSceneGraph().addLight(ammoLight);
+				healthLights = new Light[healthSpawnPositions.length];
+				for (int i = 0; i < healthLights.length; i++)
+				{
+					healthLights[i] = new Light();
+					healthLights[i].setDiffuse(0.2f, 0.6f, 1.0f);
+					healthLights[i].setSpecular(0.2f, 1.0f, 0.2f);
+					healthLights[i].setAmbient(0.05f, 0.2f, 0.05f);
+					healthLights[i].setType(Light.LightType.SPOTLIGHT);
+					healthLights[i].setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+					healthLights[i].setCutoffAngle(20.0f);
+					healthLights[i].setOffAxisExponent(10.0f);
 
-				healthLight = new Light();
-				healthLight.setDiffuse (0.2f, 0.6f, 1.0f);
-				healthLight.setSpecular(0.2f, 1.0f, 0.2f);
-				healthLight.setAmbient(0.05f, 0.2f, 0.05f);
-
-				healthLight.setType(Light.LightType.SPOTLIGHT);
-				healthLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
-				healthLight.setCutoffAngle(20.0f);
-				healthLight.setOffAxisExponent(10.0f);
-
-				engine.getSceneGraph().addLight(healthLight);
-
+					engine.getSceneGraph().addLight(healthLights[i]);
+				}
 				break;
 			case 1:
 				Light.setGlobalAmbient(0.5f, 0.5f, 0.5f);
@@ -632,30 +679,35 @@ public void buildObjects()
 
 				engine.getSceneGraph().addLight(mainLight);
 
-				ammoLight = new Light();
-				ammoLight.setDiffuse(0.2f, 1.0f, 0.2f);
-				ammoLight.setSpecular(0.2f, 0.6f, 1.0f);
-				ammoLight.setAmbient(0.05f, 0.1f, 0.2f);
+				ammoLights = new Light[ammoSpawnPositions.length];
+				for (int i = 0; i < ammoLights.length; i++)
+				{
+					ammoLights[i] = new Light();
+					ammoLights[i].setDiffuse(0.2f, 1.0f, 0.2f);
+					ammoLights[i].setSpecular(0.2f, 0.6f, 1.0f);
+					ammoLights[i].setAmbient(0.05f, 0.1f, 0.2f);
+					ammoLights[i].setType(Light.LightType.SPOTLIGHT);
+					ammoLights[i].setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+					ammoLights[i].setCutoffAngle(20.0f);
+					ammoLights[i].setOffAxisExponent(10.0f);
 
-				ammoLight.setType(Light.LightType.SPOTLIGHT);
-				ammoLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
-				ammoLight.setCutoffAngle(20.0f);
-				ammoLight.setOffAxisExponent(10.0f);
+					engine.getSceneGraph().addLight(ammoLights[i]);
+				}
 
-				engine.getSceneGraph().addLight(ammoLight);
+				healthLights = new Light[healthSpawnPositions.length];
+				for (int i = 0; i < healthLights.length; i++)
+				{
+					healthLights[i] = new Light();
+					healthLights[i].setDiffuse(0.2f, 0.6f, 1.0f);
+					healthLights[i].setSpecular(0.2f, 1.0f, 0.2f);
+					healthLights[i].setAmbient(0.05f, 0.2f, 0.05f);
+					healthLights[i].setType(Light.LightType.SPOTLIGHT);
+					healthLights[i].setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+					healthLights[i].setCutoffAngle(20.0f);
+					healthLights[i].setOffAxisExponent(10.0f);
 
-				healthLight = new Light();
-				healthLight.setDiffuse (0.2f, 0.6f, 1.0f);
-				healthLight.setSpecular(0.2f, 1.0f, 0.2f);
-				healthLight.setAmbient(0.05f, 0.2f, 0.05f);
-
-				healthLight.setType(Light.LightType.SPOTLIGHT);
-				healthLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
-				healthLight.setCutoffAngle(20.0f);
-				healthLight.setOffAxisExponent(10.0f);
-
-				engine.getSceneGraph().addLight(healthLight);
-
+					engine.getSceneGraph().addLight(healthLights[i]);
+				}
 				break;
 		}
 	}
@@ -929,33 +981,47 @@ public void buildObjects()
 		engine.getHUDmanager().setHUD2(ammoStr, ammoColor, 15, 630);
 		engine.getHUDmanager().setHUD3(posStr, posColor, 15, 15);
 
-		// animate ammo pickup: bob up and down
 		ammoBobTime += dt;
 		float bobOffset = (float)java.lang.Math.sin(ammoBobTime * 2.0f) * 0.25f;
-		float terrainY = terr.getHeight(ammoBasePos.x, ammoBasePos.z);
-		ammoPickup.setLocalTranslation(
-			new Matrix4f().translation(
-				ammoBasePos.x,
-				terrainY + 0.75f + bobOffset,
-				ammoBasePos.z));
 
-		// animate health pickup: rotate around Y axis
-		healthSpin += dt * 45.0f; // degrees per second
-		terrainY = terr.getHeight(healthBasePos.x, healthBasePos.z);
-		healthPickup.setLocalRotation(
-			new Matrix4f().rotationY((float)java.lang.Math.toRadians(healthSpin)));
-		healthPickup.setLocalTranslation(
-			new Matrix4f().translation(
-				healthBasePos.x,
-				terrainY + 0.75f,
-				healthBasePos.z));
-
-		if (ammoPickup != null && ammoLight != null) {
-			ammoLight.setLocation(ammoPickup.getWorldLocation());
+		for (int i = 0; i < ammoPickups.length; i++)
+		{
+			float terrainY = terr.getHeight(ammoSpawnPositions[i].x, ammoSpawnPositions[i].z);
+			ammoPickups[i].setLocalTranslation(
+				new Matrix4f().translation(
+					ammoSpawnPositions[i].x,
+					terrainY + 0.75f + bobOffset,
+					ammoSpawnPositions[i].z));
 		}
 
-		if (healthPickup != null && healthLight != null) {
-			healthLight.setLocation(healthPickup.getWorldLocation());
+		healthSpin += dt * 45.0f;
+
+		for (int i = 0; i < healthPickups.length; i++)
+		{
+			float terrainY = terr.getHeight(healthSpawnPositions[i].x, healthSpawnPositions[i].z);
+			healthPickups[i].setLocalRotation(
+				new Matrix4f().rotationY((float)java.lang.Math.toRadians(healthSpin)));
+			healthPickups[i].setLocalTranslation(
+				new Matrix4f().translation(
+					healthSpawnPositions[i].x,
+					terrainY + 0.75f,
+					healthSpawnPositions[i].z));
+		}
+
+		for (int i = 0; i < ammoPickups.length; i++)
+		{
+			if (ammoPickups[i] != null && ammoLights[i] != null)
+			{
+				ammoLights[i].setLocation(ammoPickups[i].getWorldLocation());
+			}
+		}
+
+		for (int i = 0; i < healthPickups.length; i++)
+		{
+			if (healthPickups[i] != null && healthLights[i] != null)
+			{
+				healthLights[i].setLocation(healthPickups[i].getWorldLocation());
+			}
 		}
 	}
 
@@ -1258,38 +1324,38 @@ public void buildObjects()
 		return pAmmo;
 	}
 
-	private void hideAmmoPickup()
+	private void hideAmmoPickup(int index)
 	{
-		ammoActive = false;
-		ammoRespawnTimer = pickupRespawnTime;
+		ammoActive[index] = false;
+		ammoRespawnTimers[index] = pickupRespawnTime;
 
-		if (ammoPickup != null)
-			ammoPickup.setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
+		if (ammoPickups[index] != null)
+			ammoPickups[index].setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
 	}
 
-	private void showAmmoPickup()
+	private void showAmmoPickup(int index)
 	{
-		ammoActive = true;
+		ammoActive[index] = true;
 
-		if (ammoPickup != null)
-			ammoPickup.setLocalScale(new Matrix4f().scaling(ammoScale));
+		if (ammoPickups[index] != null)
+			ammoPickups[index].setLocalScale(new Matrix4f().scaling(ammoScale));
 	}
 
-	private void hideHealthPickup()
+	private void hideHealthPickup(int index)
 	{
-		healthActive = false;
-		healthRespawnTimer = pickupRespawnTime;
+		healthActive[index] = false;
+		healthRespawnTimers[index] = pickupRespawnTime;
 
-		if (healthPickup != null)
-			healthPickup.setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
+		if (healthPickups[index] != null)
+			healthPickups[index].setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
 	}
 
-	private void showHealthPickup()
+	private void showHealthPickup(int index)
 	{
-		healthActive = true;
+		healthActive[index] = true;
 
-		if (healthPickup != null)
-			healthPickup.setLocalScale(new Matrix4f().scaling(healthScale));
+		if (healthPickups[index] != null)
+			healthPickups[index].setLocalScale(new Matrix4f().scaling(healthScale));
 	}
 
 	private void handlePickupCollisions(float dt)
@@ -1298,44 +1364,46 @@ public void buildObjects()
 
 		Vector3f playerPos = player.getWorldLocation();
 
-		if (!ammoActive)
+		for (int i = 0; i < ammoPickups.length; i++)
 		{
-			ammoRespawnTimer -= dt;
-			if (ammoRespawnTimer <= 0.0f)
+			if (!ammoActive[i])
 			{
-				ammoRespawnTimer = 0.0f;
-				showAmmoPickup();
+				ammoRespawnTimers[i] -= dt;
+				if (ammoRespawnTimers[i] <= 0.0f)
+				{
+					ammoRespawnTimers[i] = 0.0f;
+					showAmmoPickup(i);
+				}
 			}
-		}
 
-		if (!healthActive)
-		{
-			healthRespawnTimer -= dt;
-			if (healthRespawnTimer <= 0.0f)
-			{
-				healthRespawnTimer = 0.0f;
-				showHealthPickup();
-			}
-		}
-
-		if (ammoActive && ammoPickup != null)
-		{
-			if (playerPos.distance(ammoPickup.getWorldLocation()) <= pickupCollisionRange)
+			if (ammoActive[i] && ammoPickups[i] != null &&
+				playerPos.distance(ammoPickups[i].getWorldLocation()) <= pickupCollisionRange)
 			{
 				addPlayerAmmo(10);
-				hideAmmoPickup();
+				hideAmmoPickup(i);
 
 				if (aPsound != null)
 					aPsound.play();
 			}
 		}
 
-		if (healthActive && healthPickup != null)
+		for (int i = 0; i < healthPickups.length; i++)
 		{
-			if (playerPos.distance(healthPickup.getWorldLocation()) <= pickupCollisionRange)
+			if (!healthActive[i])
+			{
+				healthRespawnTimers[i] -= dt;
+				if (healthRespawnTimers[i] <= 0.0f)
+				{
+					healthRespawnTimers[i] = 0.0f;
+					showHealthPickup(i);
+				}
+			}
+
+			if (healthActive[i] && healthPickups[i] != null &&
+				playerPos.distance(healthPickups[i].getWorldLocation()) <= pickupCollisionRange)
 			{
 				setPlayerHealth(pHealthMax);
-				hideHealthPickup();
+				hideHealthPickup(i);
 
 				if (hPsound != null)
 					hPsound.play();
