@@ -17,6 +17,10 @@ import java.net.UnknownHostException;
 import java.util.UUID;
 import tage.networking.IGameConnection.ProtocolType;
 
+//physics imports
+import tage.physics.PhysicsEngine;
+import tage.physics.PhysicsObject;
+
 public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 {
 	private static Engine engine;
@@ -144,6 +148,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 	//lighting
 	private Light mainLight;
+
+	// physics
+	private PhysicsEngine physicsEngine;
+	private PhysicsObject playerP, terrainP;
+	private boolean physicsRunning = true;
+
+	// values for sync
+	private float[] vals = new float[16];
 
 	//mouselook
 	private Robot robot;
@@ -337,6 +349,25 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		}
 	}
 
+	private void syncGameObjectToPhysics(GameObject go)
+	{
+		if (go == null || go.getPhysicsObject() == null) return;
+
+		// set translation
+		Vector3f loc = go.getPhysicsObject().getLocation();
+		Matrix4f locMat = new Matrix4f();
+		locMat.set(3, 0, loc.x);
+		locMat.set(3, 1, loc.y);
+		locMat.set(3, 2, loc.z);
+		go.setLocalTranslation(locMat);
+
+		// set rotation
+		Quaternionf rot = go.getPhysicsObject().getRotation();
+		Matrix4f rotMat = new Matrix4f();
+		rot.get(rotMat);
+		go.setLocalRotation(rotMat);
+	}
+	
 	public MyGame(String serverAddress, int serverPort, String protocol)
 	{
 		super();
@@ -766,6 +797,53 @@ public void buildObjects()
 	}
 
 	@Override
+	public void initializePhysicsObjects()
+	{
+		float[] gravity = {0f, -9.8f, 0f};
+
+		physicsEngine = engine.getSceneGraph().getPhysicsEngine();
+		physicsEngine.setGravity(gravity);
+
+		// ---------- player physics ----------
+		float playerMass = 1.0f;
+		float playerRadius = 0.5f;
+		float playerHeight = 1.2f;
+
+		Vector3f loc = player.getWorldLocation();
+		Quaternionf rot = new Quaternionf();
+		player.getWorldRotation().getNormalizedRotation(rot);
+
+		// axis 1 = Y axis capsule
+		playerP = engine.getSceneGraph().addPhysicsCapsule(
+			playerMass, loc, rot, 1, playerRadius, playerHeight
+		);
+		playerP.setFriction(0.8f);
+		playerP.setDamping(0.2f, 0.9f);
+		playerP.setBounciness(0.0f);
+		playerP.disableSleeping();
+
+		// prevent the character from tipping over
+		playerP.setAngularFactor(0f);
+
+		player.setPhysicsObject(playerP);
+
+		loc = new Vector3f(0f, 0f, 0f);
+		rot = new Quaternionf();
+
+		float[] up = {0f, 1f, 0f};
+
+		terrainP = engine.getSceneGraph().addPhysicsStaticPlane(
+			loc, rot, up, 0.0f
+		);
+		terrainP.setBounciness(0.0f);
+		terrainP.setFriction(1.0f);
+		terr.setPhysicsObject(terrainP);
+
+		engine.enableGraphicsWorldRender();
+		engine.enablePhysicsWorldRender();
+	}
+
+	@Override
 	public void initializeGame()
 	{
 		System.out.println("=== initializeGame() reached ===");
@@ -920,6 +998,12 @@ public void buildObjects()
 		im.update(dt);
 		processNetworking(dt); // updates the network connection
 
+		if (physicsRunning && physicsEngine != null)
+		{
+			physicsEngine.update(dt);
+			syncGameObjectToPhysics(player);
+		}
+
 		if (!mouseModeInitiated) initMouseMode();
 		orbitCam.updateCameraPosition();
 
@@ -943,8 +1027,6 @@ public void buildObjects()
 		}
 
 		Vector3f playerpos = player.getWorldLocation();
-		float height = terr.getHeight(playerpos.x, playerpos.z);
-		player.setLocalLocation(new Vector3f(playerpos.x(), height, playerpos.z()));
 		Vector3f currentPos = player.getWorldLocation();
 		float moveDist = currentPos.distance(prevPlayerPos);
 
@@ -1436,6 +1518,30 @@ public void buildObjects()
 
 		return true;
 	}
+
+		public void movePlayerPhysics(Vector3f moveDir, float speed)
+	{
+		if (playerP == null) return;
+
+		float[] currentVel = playerP.getLinearVelocity();
+
+		float vx = moveDir.x * speed;
+		float vz = moveDir.z * speed;
+
+		// keep gravity / falling velocity
+		float[] newVel = { vx, currentVel[1], vz };
+		playerP.setLinearVelocity(newVel);
+	}
+
+	public void stopPlayerHorizontalMotion()
+	{
+		if (playerP == null) return;
+
+		float[] currentVel = playerP.getLinearVelocity();
+		float[] newVel = { 0f, currentVel[1], 0f };
+		playerP.setLinearVelocity(newVel);
+	}
+
 	private void applyMapSelection()
 	{
 		if (terr == null) return;
