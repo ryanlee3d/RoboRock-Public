@@ -1,22 +1,17 @@
 package bullet;
 
-import tage.GameObject;
 import tage.input.action.AbstractInputAction;
 import net.java.games.input.Event;
 import org.joml.*;
 import tage.Camera;
 
-/** Moves the avatar left/right relative to its facing direction */
 public class StrafeAction extends AbstractInputAction
 {
     private MyGame game;
     private Camera cam;
-    private GameObject av;
-    private Vector3f oldPosition, newPosition;
-    private Vector4f strafeDirection;
     private float direction, x;
 
-    private static final float MOVE_SPEED = 0.3f;
+    private static final float MOVE_SPEED = 8.0f;
 
     public StrafeAction(MyGame g, float dir, Camera c)
     {
@@ -29,31 +24,26 @@ public class StrafeAction extends AbstractInputAction
     public void performAction(float time, Event e)
     {
         x = e.getValue();
-        if (x > -0.2f && x < 0.2f) return;
-
-        float moveAmt = MOVE_SPEED * direction * x * time;
-
-        av = game.getAvatar();
-        if (av == null) return;
-
-        oldPosition = new Vector3f(av.getWorldLocation());
-
-        // local right vector
-        strafeDirection = new Vector4f(1f, 0f, 0f, 0f);
-        strafeDirection.mul(av.getWorldRotation());
-        strafeDirection.mul(moveAmt);
-
-        newPosition = new Vector3f(
-            oldPosition.x() + strafeDirection.x(),
-            oldPosition.y() + strafeDirection.y(),
-            oldPosition.z() + strafeDirection.z()
-        );
-        
-        if(game.canMoveOnTerrain(oldPosition, newPosition)){
-        av.setLocalLocation(newPosition);
+        if (x > -0.2f && x < 0.2f)
+        {
+            game.stopPlayerHorizontalMotion();
+            return;
         }
 
-        if (game.getProtocolClient() != null)
-            game.getProtocolClient().sendMoveMessage(av.getWorldLocation());
+        Vector3f camN = cam.getN();
+        Vector3f forward = new Vector3f(camN.x, 0f, camN.z);
+
+        if (forward.lengthSquared() < 0.000001f) return;
+        forward.normalize();
+
+        Vector3f right = new Vector3f(forward.z, 0f, -forward.x);
+        right.normalize();
+
+        right.mul(direction * x);
+
+        game.movePlayerPhysics(right, MOVE_SPEED);
+
+        if (game.getProtocolClient() != null && game.getAvatar() != null)
+            game.getProtocolClient().sendMoveMessage(game.getAvatar().getWorldLocation());
     }
 }
