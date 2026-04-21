@@ -42,6 +42,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private Camera cam;
     private Camera camOver;
 
+    private boolean firstPersonMode = false;
+
+    // tweak these until the gun lines up: x = right, y = up, z = forward from player center
+    private Vector3f fpOffset = new Vector3f(0.22f, 1.55f, 0.18f);
+
     private float sensitvity = 0.25f;
 
     private double lastFrameTime, currFrameTime, elapsTime;
@@ -336,6 +341,36 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         robot.mouseMove((int)centerX, (int)centerY);
     }
 
+    private void updateFirstPersonCamera()
+    {
+        if (cam == null || player == null) return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        // use current camera basis so mouse-look still controls direction
+        Vector3f camForward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+        Vector3f worldUp = new Vector3f(0.0f, 1.0f, 0.0f);
+
+        // compute right vector from current look direction
+        Vector3f camRight = new Vector3f();
+        worldUp.cross(camForward, camRight).normalize();
+
+        // rebuild a clean orthonormal basis
+        Vector3f camUp = new Vector3f();
+        camForward.cross(camRight, camUp).normalize();
+
+        // offset camera from player: right + up + slight forward
+        Vector3f fpCamPos = new Vector3f(playerPos)
+            .add(new Vector3f(camRight).mul(fpOffset.x))
+            .add(new Vector3f(worldUp).mul(fpOffset.y))
+            .add(new Vector3f(camForward).mul(fpOffset.z));
+
+        cam.setLocation(fpCamPos);
+        cam.setU(camRight);
+        cam.setV(camUp);
+        cam.setN(new Vector3f(camForward).mul(-1.0f));
+    }
+
     private void attachWeaponToPlayer(GameObject weapon)
     {
         if (weapon == null || player == null) return;
@@ -416,6 +451,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (skinny != null) snapObjectToTerrain(skinny, 0.0f);
         if (ape != null) snapObjectToTerrain(ape, 0.0f);
+    }
+
+    private void updatePlayerVisibilityForCameraMode()
+    {
+        if (player == null) return;
+
+        if (firstPersonMode)
+            player.setLocalScale(new Matrix4f().scaling(0.0001f));
+        else
+            player.setLocalScale(new Matrix4f().scaling(playerScale));
     }
 
     @Override
@@ -832,6 +877,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         AbstractInputAction panLeft = new OhPLA();
         AbstractInputAction panRight = new OhPRA();
         AbstractInputAction recenter = new OhRecenter();
+        AbstractInputAction toggleFP = new ToggleFirstPersonAction();
 
         // corrected bindings: W forward, S backward
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.W, fwdA,
@@ -861,6 +907,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.R, recenter,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.F,toggleFP,
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
 
         setupNetworking();
         initAudio();
@@ -908,7 +956,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         updateBullets(dt);
 
         if (!mouseModeInitiated) initMouseMode();
-        orbitCam.updateCameraPosition();
+
+        if (firstPersonMode)
+            updateFirstPersonCamera();
+        else
+            orbitCam.updateCameraPosition();
+
+        //updatePlayerVisibilityForCameraMode();
 
         if (playerS != null) playerS.updateAnimation();
         if (gm != null) gm.updateGhostAnimations(dt);
@@ -1244,6 +1298,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private class ToggleFirstPersonAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            firstPersonMode = !firstPersonMode;
+        }
+    }
+    
     public void setPlayerHealth(int value)
     {
         pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
