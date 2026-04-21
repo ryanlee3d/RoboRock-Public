@@ -45,7 +45,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private boolean firstPersonMode = false;
 
     // tweak these until the gun lines up: x = right, y = up, z = forward from player center
-    private Vector3f fpOffset = new Vector3f(0.22f, 1.55f, 0.18f);
+    private Vector3f fpOffset = new Vector3f(0.08f, 1.55f, -0.18f);
 
     private float sensitvity = 0.25f;
 
@@ -130,8 +130,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         new Vector3f( 26.0f, 0.0f, -90.0f)
     };
 
+    // ufo spawn positions
+    private final Vector3f[] ufoDropPositions =
+    {
+        new Vector3f(-64.48f, 5.99f,  38.01f),
+        new Vector3f(-76.82f, 7.92f,  -5.37f),
+        new Vector3f( 21.98f, 5.14f, -15.00f),
+        new Vector3f( 66.83f, 5.45f, -28.26f),
+        new Vector3f( 39.35f, 4.94f, -67.59f),
+        new Vector3f( 86.69f, 5.45f, -52.79f),
+        new Vector3f(-27.04f, 5.65f,  11.53f),
+        new Vector3f(-50.59f, 6.23f,  -6.37f)
+    };
+
+    private final Vector3f largeUfoDropPosition = new Vector3f(69.30f, 4.94f, -64.08f);
+
     // object init locations and scale
-    private Vector3f playerStartPos = new Vector3f(8.0f, 6.0f, 8.0f);
+    private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
     private float playerScale = 0.01f;
     private float ammoScale = 0.3f;
     private float healthScale = 0.3f;
@@ -216,6 +231,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean isFiring = false;
     private float fireCooldown = 0.0f;
+
+    // apes
+    private java.util.ArrayList<GameObject> activeApes = new java.util.ArrayList<>();
+    private java.util.ArrayList<PhysicsObject> activeApePhysics = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeApeHealth = new java.util.ArrayList<>();
+
+    // ufo
+    private int currentWave = 0;
+    private boolean ufoActive = false;
 
     // tuning
     private final float pistolFireDelay = 0.25f;
@@ -461,6 +485,66 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             player.setLocalScale(new Matrix4f().scaling(0.0001f));
         else
             player.setLocalScale(new Matrix4f().scaling(playerScale));
+    }
+
+    private void spawnApe(Vector3f dropPos)
+    {
+        float terrainY = terr.getHeight(dropPos.x, dropPos.z);
+
+        Vector3f spawnPos = new Vector3f(
+            dropPos.x,
+            terrainY + 7.0f,   // 6–8 above terrain (you requested this)
+            dropPos.z
+        );
+
+        GameObject newApe = new GameObject(GameObject.root(), apeS, apeTx);
+        newApe.setLocalScale(new Matrix4f().scaling(0.01f));
+        newApe.getRenderStates().setModelOrientationCorrection(
+            new Matrix4f()
+                .rotationX((float)Math.toRadians(90.0f))
+                .rotateZ((float)Math.toRadians(180.0f))
+        );
+
+        newApe.setLocalTranslation(new Matrix4f().translation(
+            spawnPos.x, spawnPos.y, spawnPos.z));
+
+        // physics capsule for ape
+        Quaternionf rot = new Quaternionf();
+        PhysicsObject apeP = engine.getSceneGraph().addPhysicsCapsule(
+            1.0f,
+            spawnPos,
+            rot,
+            1,
+            0.5f,
+            1.2f
+        );
+
+        apeP.setFriction(0.8f);
+        apeP.setDamping(0.2f, 0.9f);
+        apeP.setBounciness(0.0f);
+        apeP.disableSleeping();
+
+        newApe.setPhysicsObject(apeP);
+
+        activeApes.add(newApe);
+        activeApePhysics.add(apeP);
+        activeApeHealth.add(100); 
+    }
+
+    private void removeApe(int index)
+    {
+        GameObject ape = activeApes.get(index);
+        PhysicsObject apeP = activeApePhysics.get(index);
+
+        if (ape != null)
+            ape.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        if (apeP != null)
+            physicsEngine.removeObject(apeP.getUID());
+
+        activeApes.remove(index);
+        activeApePhysics.remove(index);
+        activeApeHealth.remove(index);
     }
 
     @Override
@@ -968,6 +1052,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (gm != null) gm.updateGhostAnimations(dt);
         if (skinnyS != null) skinnyS.updateAnimation();
         if (apeS != null) apeS.updateAnimation();
+
+        // if no apes alive, trigger next UFO
+        if (!ufoActive && activeApes.size() == 0)
+        {
+            startNextWave();
+        }
 
         updateStaticObjectsToTerrain();
 
@@ -1564,8 +1654,30 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             Matrix4f trans = new Matrix4f().translation(loc.x, loc.y, loc.z);
             bullet.setLocalTranslation(trans);
 
+            for (int j = activeApes.size() - 1; j >= 0; j--)
+            {
+                GameObject ape = activeApes.get(j);
+                Vector3f apePos = ape.getWorldLocation();
+
+                if (loc.distance(apePos) < 1.0f) // simple hit radius
+                {
+                    int hp = activeApeHealth.get(j) - 100; // bullet damage = 100
+                    activeApeHealth.set(j, hp);
+
+                    removeBullet(i);
+
+                    if (hp <= 0)
+                    {
+                        removeApe(j);
+                    }
+                    break;
+                }
+            }
+
             float life = activeBulletLifetimes.get(i) - dt;
             activeBulletLifetimes.set(i, life);
+
+
 
             if (life <= 0.0f || loc.y < -10.0f)
             {
@@ -1590,6 +1702,32 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeBulletVelocities.remove(index);
         activeBulletLifetimes.remove(index);
         activeBulletIsPlasma.remove(index);
+    }
+
+    private void startNextWave()
+    {
+        if (currentWave < 8)
+        {
+            spawnUfoWave(ufoDropPositions[currentWave], 5);
+        }
+        else if (currentWave == 8)
+        {
+            spawnUfoWave(largeUfoDropPosition, 10);
+        }
+
+        currentWave++;
+    }
+
+    private void spawnUfoWave(Vector3f pos, int apeCount)
+    {
+        ufoActive = true;
+
+        for (int i = 0; i < apeCount; i++)
+        {
+            spawnApe(pos);
+        }
+
+        ufoActive = false;
     }
 
     private void applyMapSelection()
