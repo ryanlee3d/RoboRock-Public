@@ -923,7 +923,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		terr.setPhysicsObject(terrainP);
 
         engine.enableGraphicsWorldRender();
-        //engine.enablePhysicsWorldRender();
+        engine.enablePhysicsWorldRender();
     }
 
     @Override
