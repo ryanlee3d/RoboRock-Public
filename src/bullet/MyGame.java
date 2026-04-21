@@ -20,7 +20,7 @@ import tage.networking.IGameConnection.ProtocolType;
 import tage.physics.PhysicsEngine;
 import tage.physics.PhysicsObject;
 
-public class MyGame extends VariableFrameRateGame implements MouseMotionListener
+public class MyGame extends VariableFrameRateGame implements MouseMotionListener, MouseListener
 {
     private static Engine engine;
 
@@ -197,6 +197,35 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     // ghost rendering
     private AnimatedShape ghostS;
     private TextureImage ghostT;
+
+    // bullet system
+    private ObjShape bulletSphereS;
+    private TextureImage bulletYellowTx;
+    private TextureImage bulletBlueTx;
+
+    private java.util.ArrayList<GameObject> activeBullets = new java.util.ArrayList<>();
+    private java.util.ArrayList<PhysicsObject> activeBulletPhysics = new java.util.ArrayList<>();
+    private java.util.ArrayList<Vector3f> activeBulletVelocities = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeBulletLifetimes = new java.util.ArrayList<>();
+    private java.util.ArrayList<Boolean> activeBulletIsPlasma = new java.util.ArrayList<>();
+
+    private boolean isFiring = false;
+    private float fireCooldown = 0.0f;
+
+    // tuning
+    private final float pistolFireDelay = 0.25f;
+    private final float rifleFireDelay = 0.10f;
+    private final float plasmaFireDelay = 0.18f;
+    private final float shotgunFireDelay = 0.55f;
+
+    private final float bulletLifeMax = 3.0f;
+    private final float bulletRadius = 0.05f;
+    private final float plasmaRadius = 0.30f;
+
+    private final float bulletSpeed = 80.0f;
+    private final float plasmaSpeed = 30.0f;
+    private final float shotgunSpread = 0.12f;
+    private final int shotgunPelletCount = 6;
 
     // getters
     public GameObject getAvatar() { return player; }
@@ -448,6 +477,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 plasmaRifleS = new ImportedModel("plasmaRifle.obj");
                 rifleS = new ImportedModel("rifle.obj");
                 shotGunS = new ImportedModel("shotGun.obj");
+
+                bulletSphereS = new Sphere();
                 break;
 
             case 1:
@@ -470,6 +501,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 shotGunS = new ImportedModel("shotGun.obj");
                 knifeS = new ImportedModel("knife.obj");
                 pistolS = new ImportedModel("pistol.obj");
+
+                bulletSphereS = new Sphere();
                 break;
         }
     }
@@ -499,6 +532,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         heightMap0 = new TextureImage("map0hm.png");
         heightMap1 = new TextureImage("map1hm.png");
+
+        bulletYellowTx = new TextureImage("bullet.jpg");
+        bulletBlueTx = new TextureImage("plasmaBullet.jpg");
     }
 
     @Override
@@ -758,7 +794,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		terr.setPhysicsObject(terrainP);
 
         engine.enableGraphicsWorldRender();
-        engine.enablePhysicsWorldRender();
+        //engine.enablePhysicsWorldRender();
     }
 
     @Override
@@ -777,6 +813,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         elapsTime = 0.0;
 
         engine.getRenderSystem().setWindowDimensions(1280, 720);
+
         cam.setLocation(new Vector3f(0.0f, 8.0f, 12.0f));
 
         im = engine.getInputManager();
@@ -856,11 +893,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.update(dt);
         processNetworking(dt);
 
+        if (fireCooldown > 0.0f)
+            fireCooldown -= dt;
+
+        if (isFiring && isAutomaticWeapon() && fireCooldown <= 0.0f && pAmmo > 0)
+            fireCurrentWeapon();
+
         if (physicsRunning && physicsEngine != null)
         {
             physicsEngine.update(dt);
             syncGameObjectToPhysics(player);
         }
+
+        updateBullets(dt);
 
         if (!mouseModeInitiated) initMouseMode();
         orbitCam.updateCameraPosition();
@@ -1081,6 +1126,40 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         updateWeaponVisibility();
     }
 
+    @Override
+    public void mousePressed(MouseEvent e)
+    {
+        if (gameState != GameState.PLAYING) return;
+        if (e.getButton() != MouseEvent.BUTTON1) return;
+
+        if (!weaponUsesBullets()) return;
+        if (pAmmo <= 0) return;
+
+        if (isAutomaticWeapon())
+        {
+            isFiring = true;
+            if (fireCooldown <= 0.0f)
+                fireCurrentWeapon();
+        }
+        else
+        {
+            if (fireCooldown <= 0.0f)
+                fireCurrentWeapon();
+        }
+    }
+
+    @Override
+    public void mouseReleased(MouseEvent e)
+    {
+        if (e.getButton() == MouseEvent.BUTTON1)
+            isFiring = false;
+    }
+
+    @Override public void mouseClicked(MouseEvent e) {}
+    @Override public void mouseEntered(MouseEvent e) {}
+    @Override public void mouseExited(MouseEvent e) {}
+    @Override public void mouseDragged(MouseEvent e) {}
+
     private class OverheadZoomInAction extends AbstractInputAction
     {
         @Override
@@ -1294,6 +1373,158 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (playerP == null) return;
         playerP.setLinearVelocity(new float[] { 0f, 0f, 0f });
+    }
+
+    private boolean weaponUsesBullets()
+    {
+        return currentWeaponIndex >= 1 && currentWeaponIndex <= 4;
+    }
+
+    private boolean isAutomaticWeapon()
+    {
+        return currentWeaponIndex == 2 || currentWeaponIndex == 3; // plasma + rifle
+    }
+
+    private float getCurrentFireDelay()
+    {
+        switch (currentWeaponIndex)
+        {
+            case 1: return pistolFireDelay;
+            case 2: return plasmaFireDelay;
+            case 3: return rifleFireDelay;
+            case 4: return shotgunFireDelay;
+            default: return 999f;
+        }
+    }
+
+    private void fireCurrentWeapon()
+    {
+        if (!weaponUsesBullets()) return;
+        if (pAmmo <= 0) return;
+
+        Vector3f camLoc = cam.getLocation();
+        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+
+        // spawn slightly in front of camera/player
+        Vector3f spawnPos = new Vector3f(camLoc).add(new Vector3f(forward).mul(1.2f));
+
+        switch (currentWeaponIndex)
+        {
+            case 1: // pistol
+                spawnBullet(spawnPos, forward, false);
+                addPlayerAmmo(-1);
+                break;
+
+            case 2: // plasma rifle
+                spawnBullet(spawnPos, forward, true);
+                addPlayerAmmo(-1);
+                break;
+
+            case 3: // assault rifle
+                spawnBullet(spawnPos, forward, false);
+                addPlayerAmmo(-1);
+                break;
+
+            case 4: // shotgun
+                for (int i = 0; i < shotgunPelletCount; i++)
+                {
+                    Vector3f spreadDir = new Vector3f(forward).add(
+                        ((float)Math.random() - 0.5f) * shotgunSpread,
+                        ((float)Math.random() - 0.5f) * shotgunSpread,
+                        ((float)Math.random() - 0.5f) * shotgunSpread
+                    ).normalize();
+
+                    spawnBullet(spawnPos, spreadDir, false);
+                }
+                addPlayerAmmo(-1);
+                break;
+        }
+
+        fireCooldown = getCurrentFireDelay();
+    }
+
+    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
+    {
+        GameObject bullet = new GameObject(
+            GameObject.root(),
+            bulletSphereS,
+            isPlasma ? bulletBlueTx : bulletYellowTx
+        );
+
+        float scale = isPlasma ? plasmaRadius : bulletRadius;
+        bullet.setLocalTranslation(new Matrix4f().translation(spawnPos.x, spawnPos.y, spawnPos.z));
+        bullet.setLocalScale(new Matrix4f().scaling(scale));
+
+        Quaternionf rot = new Quaternionf();
+        PhysicsObject bulletP = engine.getSceneGraph().addPhysicsSphere(
+            isPlasma ? 2.0f : 1.0f,
+            spawnPos,
+            rot,
+            scale
+        );
+
+        bulletP.setBounciness(0.0f);
+        bulletP.setFriction(0.2f);
+        bulletP.setDamping(0.0f, 0.0f);
+        bulletP.disableSleeping();
+
+        float speed = isPlasma ? plasmaSpeed : bulletSpeed;
+        Vector3f velocity = new Vector3f(dir).mul(speed);
+        bulletP.setLinearVelocity(new float[] { velocity.x, velocity.y, velocity.z });
+
+        bullet.setPhysicsObject(bulletP);
+
+        activeBullets.add(bullet);
+        activeBulletPhysics.add(bulletP);
+        activeBulletVelocities.add(velocity);
+        activeBulletLifetimes.add(bulletLifeMax);
+        activeBulletIsPlasma.add(isPlasma);
+    }
+
+    private void updateBullets(float dt)
+    {
+        for (int i = activeBullets.size() - 1; i >= 0; i--)
+        {
+            GameObject bullet = activeBullets.get(i);
+            PhysicsObject bulletP = activeBulletPhysics.get(i);
+
+            if (bullet == null || bulletP == null)
+            {
+                removeBullet(i);
+                continue;
+            }
+
+            Vector3f loc = bulletP.getLocation();
+
+            Matrix4f trans = new Matrix4f().translation(loc.x, loc.y, loc.z);
+            bullet.setLocalTranslation(trans);
+
+            float life = activeBulletLifetimes.get(i) - dt;
+            activeBulletLifetimes.set(i, life);
+
+            if (life <= 0.0f || loc.y < -10.0f)
+            {
+                removeBullet(i);
+            }
+        }
+    }
+
+    private void removeBullet(int index)
+    {
+        GameObject bullet = activeBullets.get(index);
+        PhysicsObject bulletP = activeBulletPhysics.get(index);
+
+        if (bullet != null)
+            bullet.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        if (bulletP != null)
+            physicsEngine.removeObject(bulletP.getUID());
+
+        activeBullets.remove(index);
+        activeBulletPhysics.remove(index);
+        activeBulletVelocities.remove(index);
+        activeBulletLifetimes.remove(index);
+        activeBulletIsPlasma.remove(index);
     }
 
     private void applyMapSelection()
