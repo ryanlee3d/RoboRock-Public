@@ -223,12 +223,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final float plasmaFireDelay = 0.18f;
     private final float shotgunFireDelay = 0.55f;
 
-    private final float bulletLifeMax = 3.0f;
-    private final float bulletRadius = 0.05f;
+    private final float bulletLifeMax = 10.0f;
+    private final float bulletRadius = 0.02f; 
     private final float plasmaRadius = 0.30f;
 
-    private final float bulletSpeed = 80.0f;
-    private final float plasmaSpeed = 30.0f;
+    private final float bulletSpeed = 8.00f;
+    private final float plasmaSpeed = 3.00f;
     private final float shotgunSpread = 0.12f;
     private final int shotgunPelletCount = 6;
 
@@ -1465,11 +1465,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (!weaponUsesBullets()) return;
         if (pAmmo <= 0) return;
 
-        Vector3f camLoc = cam.getLocation();
-        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+        Vector3f forward = new Vector3f(cam.getN()).normalize();
+        Vector3f playerPos = player.getWorldLocation();
 
-        // spawn slightly in front of camera/player
-        Vector3f spawnPos = new Vector3f(camLoc).add(new Vector3f(forward).mul(1.2f));
+        // start near the player's upper body, then push forward
+        Vector3f spawnPos = new Vector3f(playerPos)
+            .add(0.0f, 1.5f, 0.0f)
+            .add(new Vector3f(forward).mul(1.5f));
 
         switch (currentWeaponIndex)
         {
