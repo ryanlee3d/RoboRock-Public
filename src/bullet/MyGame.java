@@ -570,6 +570,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApes.remove(index);
         activeApePhysics.remove(index);
         activeApeHealth.remove(index);
+        activeApeDead.remove(index);
+        activeApeDeathTimers.remove(index);
     }
 
     private void updateDeadApes(float dt)
@@ -826,7 +828,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         largeUfo = new GameObject(GameObject.root(), ufoS, ufoTx);
         largeUfo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
-        largeUfo.setLocalScale(new Matrix4f().scaling(2.5f));
+        largeUfo.setLocalScale(new Matrix4f().scaling(0.25f));
 
         for (int i = 0; i < smallBuildings.length; i++)
         {
@@ -1734,38 +1736,45 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             }
 
             Vector3f loc = bulletP.getLocation();
+            bullet.setLocalTranslation(new Matrix4f().translation(loc.x, loc.y, loc.z));
 
-            Matrix4f trans = new Matrix4f().translation(loc.x, loc.y, loc.z);
-            bullet.setLocalTranslation(trans);
+            boolean bulletRemoved = false;
 
+            // check collision with apes
             for (int j = activeApes.size() - 1; j >= 0; j--)
             {
                 GameObject ape = activeApes.get(j);
                 Vector3f apePos = ape.getWorldLocation();
 
-            if (loc.distance(apePos) < 1.0f)
-            {
-                if (!activeApeDead.get(j))
+                if (loc.distance(apePos) < 1.0f)
                 {
-                    int hp = activeApeHealth.get(j) - 100;
-                    activeApeHealth.set(j, hp);
-
-                    removeBullet(i);
-
-                    if (hp <= 0)
+                    if (!activeApeDead.get(j))
                     {
-                        activeApeDead.set(j, true);
-                        activeApeDeathTimers.set(j, 2.0f);
+                        int hp = activeApeHealth.get(j) - 100;
+                        activeApeHealth.set(j, hp);
 
-                        PhysicsObject apeP = activeApePhysics.get(j);
-                        if (apeP != null)
-                            apeP.setAngularFactor(1f);
-                            apeP.applyTorque(0.0f, 0.0f, 35.0f); // fall over
+                        removeBullet(i);
+                        bulletRemoved = true;
+
+                        if (hp <= 0)
+                        {
+                            activeApeDead.set(j, true);
+                            activeApeDeathTimers.set(j, 2.0f);
+
+                            PhysicsObject apeP = activeApePhysics.get(j);
+                            if (apeP != null)
+                            {
+                                apeP.setAngularFactor(1f);
+                                apeP.applyTorque(0.0f, 0.0f, 35.0f);
+                            }
+                        }
                     }
+                    break;
                 }
-                break;
             }
-        }
+
+            if (bulletRemoved)
+                continue;
 
             float life = activeBulletLifetimes.get(i) - dt;
             activeBulletLifetimes.set(i, life);
