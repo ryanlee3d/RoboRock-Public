@@ -53,13 +53,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private IAction restartGame;
 
     // game objects
-    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
+    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding, largeUfo;
 
     // instances of game objects for repeat use
     private GameObject[] smallBuildings = new GameObject[8];
     private GameObject[] smallBuildings2 = new GameObject[8];
+    private GameObject[] ufos = new GameObject[8];
     private GameObject[] ammoPickups;
     private GameObject[] healthPickups;
+
 
     private boolean[] ammoActive;
     private boolean[] healthActive;
@@ -96,10 +98,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private tage.audio.Sound aPsound;
 
     // shapes and textures for game objects
-    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS;
+    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS;
 
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
-        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx;
+        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx;
 
     // pickup object animation values
     private float ammoBobTime = 0.0f;
@@ -144,6 +146,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     };
 
     private final Vector3f largeUfoDropPosition = new Vector3f(69.30f, 4.94f, -64.08f);
+
+    private GameObject activeUfo = null;
+    private Vector3f activeUfoStart = new Vector3f();
+    private Vector3f activeUfoTarget = new Vector3f();
+    private float activeUfoTravelTime = 0.0f;
+    private float activeUfoTravelDuration = 6.0f;
+    private boolean activeUfoIsLarge = false;
+    private int activeUfoDropCount = 0;
+    private boolean waveDropFinished = false;     
 
     // object init locations and scale
     private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
@@ -236,6 +247,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<GameObject> activeApes = new java.util.ArrayList<>();
     private java.util.ArrayList<PhysicsObject> activeApePhysics = new java.util.ArrayList<>();
     private java.util.ArrayList<Integer> activeApeHealth = new java.util.ArrayList<>();
+    private java.util.ArrayList<Boolean> activeApeDead = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeApeDeathTimers = new java.util.ArrayList<>();
 
     // ufo
     private int currentWave = 0;
@@ -529,6 +542,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApes.add(newApe);
         activeApePhysics.add(apeP);
         activeApeHealth.add(100); 
+        activeApeDead.add(false);
+        activeApeDeathTimers.add(0.0f);
+    }
+
+    private Vector3f getUfoStartPosition(Vector3f target)
+    {
+        float startX = target.x < 0 ? -140.0f : 140.0f;
+        float startZ = target.z < 0 ? -140.0f : 140.0f;
+        return new Vector3f(startX, target.y + 25.0f, startZ);
     }
 
     private void removeApe(int index)
@@ -545,6 +567,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApes.remove(index);
         activeApePhysics.remove(index);
         activeApeHealth.remove(index);
+    }
+
+    private void updateDeadApes(float dt)
+    {
+        for (int i = activeApes.size() - 1; i >= 0; i--)
+        {
+            if (!activeApeDead.get(i)) continue;
+
+            float time = activeApeDeathTimers.get(i) - dt;
+            activeApeDeathTimers.set(i, time);
+
+            if (time <= 0.0f)
+                removeApe(i);
+        }
     }
 
     @Override
@@ -608,6 +644,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 shotGunS = new ImportedModel("shotGun.obj");
 
                 bulletSphereS = new Sphere();
+
+                ufoS = new ImportedModel("ufo.obj");
                 break;
 
             case 1:
@@ -664,6 +702,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         bulletYellowTx = new TextureImage("bullet.jpg");
         bulletBlueTx = new TextureImage("plasmaBullet.jpg");
+
+        ufoTx = new TextureImage("ufo.png");
     }
 
     @Override
@@ -773,6 +813,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {78.0f, -37.0f}, {-79.0f, 16.0f}, {-50.0f, 51.0f}, {-40.0f, 22.0f},
             {-24.0f, -18.0f}, {-5.0f, 35.0f}, {10.0f, -42.0f}, {44.0f, -10.0f}
         };
+
+        for (int i = 0; i < ufos.length; i++)
+        {
+            ufos[i] = new GameObject(GameObject.root(), ufoS, ufoTx);
+            ufos[i].setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
+            ufos[i].setLocalScale(new Matrix4f().scaling(0.05f));
+        }
+
+        largeUfo = new GameObject(GameObject.root(), ufoS, ufoTx);
+        largeUfo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
+        largeUfo.setLocalScale(new Matrix4f().scaling(2.5f));
 
         for (int i = 0; i < smallBuildings.length; i++)
         {
@@ -1036,6 +1087,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             physicsEngine.update(dt);
             syncGameObjectToPhysics(player);
         }
+
+        updateApesFromPhysics();
+        updateActiveUfo(dt);
+        updateDeadApes(dt);
 
         updateBullets(dt);
 
@@ -1659,25 +1714,31 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 GameObject ape = activeApes.get(j);
                 Vector3f apePos = ape.getWorldLocation();
 
-                if (loc.distance(apePos) < 1.0f) // simple hit radius
+            if (loc.distance(apePos) < 1.0f)
+            {
+                if (!activeApeDead.get(j))
                 {
-                    int hp = activeApeHealth.get(j) - 100; // bullet damage = 100
+                    int hp = activeApeHealth.get(j) - 100;
                     activeApeHealth.set(j, hp);
 
                     removeBullet(i);
 
                     if (hp <= 0)
                     {
-                        removeApe(j);
+                        activeApeDead.set(j, true);
+                        activeApeDeathTimers.set(j, 2.0f);
+
+                        PhysicsObject apeP = activeApePhysics.get(j);
+                        if (apeP != null)
+                            apeP.applyTorque(0.0f, 0.0f, 35.0f); // fall over
                     }
-                    break;
                 }
+                break;
             }
+        }
 
             float life = activeBulletLifetimes.get(i) - dt;
             activeBulletLifetimes.set(i, life);
-
-
 
             if (life <= 0.0f || loc.y < -10.0f)
             {
@@ -1721,13 +1782,90 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private void spawnUfoWave(Vector3f pos, int apeCount)
     {
         ufoActive = true;
+        waveDropFinished = false;
+        activeUfoTarget.set(pos);
+        activeUfoTravelTime = 0.0f;
+        activeUfoDropCount = apeCount;
 
+        activeUfoIsLarge = (apeCount == 10);
+
+        if (activeUfoIsLarge)
+            activeUfo = largeUfo;
+        else
+            activeUfo = ufos[currentWave];
+
+        activeUfoStart.set(getUfoStartPosition(pos));
+        activeUfo.setLocalTranslation(new Matrix4f().translation(activeUfoStart));
+    }
+
+    private void updateActiveUfo(float dt)
+    {
+        if (!ufoActive || activeUfo == null || waveDropFinished) return;
+
+        activeUfoTravelTime += dt;
+        float t = activeUfoTravelTime / activeUfoTravelDuration;
+        if (t > 1.0f) t = 1.0f;
+
+        Vector3f pos = new Vector3f(
+            activeUfoStart.x + (activeUfoTarget.x - activeUfoStart.x) * t,
+            activeUfoStart.y + (activeUfoTarget.y + 18.0f - activeUfoStart.y) * t,
+            activeUfoStart.z + (activeUfoTarget.z - activeUfoStart.z) * t
+        );
+
+        float zigzag = (float)Math.sin(t * 8.0f * Math.PI) * 8.0f;
+        pos.x += zigzag;
+
+        activeUfo.setLocalTranslation(new Matrix4f().translation(pos));
+
+        if (t >= 1.0f)
+        {
+            dropApesFromUfo(activeUfoTarget, activeUfoDropCount);
+            waveDropFinished = true;
+            ufoActive = false;
+        }
+    }
+
+    private void updateApesFromPhysics()
+    {
+        for (int i = 0; i < activeApes.size(); i++)
+        {
+            GameObject apeObj = activeApes.get(i);
+            PhysicsObject apePhys = activeApePhysics.get(i);
+
+            if (apeObj == null || apePhys == null) continue;
+
+            Vector3f loc = apePhys.getLocation();
+            Matrix4f locMat = new Matrix4f().translation(loc.x, loc.y - 1.1f, loc.z);
+            apeObj.setLocalTranslation(locMat);
+
+            Quaternionf rot = apePhys.getRotation();
+            Matrix4f rotMat = new Matrix4f();
+            rot.get(rotMat);
+            apeObj.setLocalRotation(rotMat);
+
+            apeObj.getRenderStates().setModelOrientationCorrection(
+                new Matrix4f()
+                    .rotationX((float)Math.toRadians(90.0f))
+                    .rotateZ((float)Math.toRadians(180.0f))
+            );
+        }
+    }
+
+    private void dropApesFromUfo(Vector3f dropPos, int apeCount)
+    {
         for (int i = 0; i < apeCount; i++)
         {
-            spawnApe(pos);
-        }
+            float offsetX = ((float)Math.random() - 0.5f) * 8.0f;
+            float offsetZ = ((float)Math.random() - 0.5f) * 8.0f;
 
-        ufoActive = false;
+            Vector3f apeDrop = new Vector3f(
+                dropPos.x + offsetX,
+                dropPos.y,
+                dropPos.z + offsetZ
+            );
+
+            spawnApe(apeDrop);
+        }
     }
 
     private void applyMapSelection()
