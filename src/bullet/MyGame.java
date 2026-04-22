@@ -37,6 +37,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int menuSelection = 0;
     private final MainMenu menu = new MainMenu();
 
+    private boolean physicsDebug = true;
+
     private InputManager im;
     private CameraOrbit3D orbitCam;
     private Camera cam;
@@ -536,6 +538,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         apeP.setDamping(0.2f, 0.9f);
         apeP.setBounciness(0.0f);
         apeP.disableSleeping();
+        apeP.setAngularFactor(0f);
 
         newApe.setPhysicsObject(apeP);
 
@@ -974,7 +977,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		terr.setPhysicsObject(terrainP);
 
         engine.enableGraphicsWorldRender();
-        engine.enablePhysicsWorldRender();
+        if (physicsDebug)
+            engine.enablePhysicsWorldRender();
+        else
+            engine.disablePhysicsWorldRender();
     }
 
     @Override
@@ -1013,6 +1019,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         AbstractInputAction panRight = new OhPRA();
         AbstractInputAction recenter = new OhRecenter();
         AbstractInputAction toggleFP = new ToggleFirstPersonAction();
+        AbstractInputAction togglePhysics = new TogglePhysicsDebugAction();
 
         // corrected bindings: W forward, S backward
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.W, fwdA,
@@ -1043,6 +1050,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.R, recenter,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.F,toggleFP,
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);          
+        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.P,togglePhysics,
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
 
         setupNetworking();
@@ -1451,6 +1460,26 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             firstPersonMode = !firstPersonMode;
         }
     }
+
+    private class TogglePhysicsDebugAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            physicsDebug = !physicsDebug;
+
+            if (physicsDebug)
+            {
+                engine.enablePhysicsWorldRender();
+                System.out.println("Physics Debug ON");
+            }
+            else
+            {
+                engine.disablePhysicsWorldRender();
+                System.out.println("Physics Debug OFF");
+            }
+        }
+    }
     
     public void setPlayerHealth(int value)
     {
@@ -1730,6 +1759,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                         PhysicsObject apeP = activeApePhysics.get(j);
                         if (apeP != null)
+                            apeP.setAngularFactor(1f);
                             apeP.applyTorque(0.0f, 0.0f, 35.0f); // fall over
                     }
                 }
