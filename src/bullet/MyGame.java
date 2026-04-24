@@ -200,6 +200,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private float centerX, centerY;
     private float prevMouseX, prevMouseY;
     private float curMouseX, curMouseY;
+    private boolean cursorSet = false;
 
     // controlling the hud cam
     private float ohHeight = 32.0f;
@@ -356,6 +357,26 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         recenterMouse();
         prevMouseX = centerX;
         prevMouseY = centerY;
+
+        setCrosshairCursor();
+    }
+
+    private void setCrosshairCursor()
+    {
+        if (cursorSet || engine == null) return;
+
+        RenderSystem rs = engine.getRenderSystem();
+        if (rs == null || rs.getGLCanvas() == null) return;
+
+        Toolkit toolkit = Toolkit.getDefaultToolkit();
+        Image cursorImage = toolkit.getImage("./assets/textures/crosshairs.png");
+
+        Point hotspot = new Point(16, 16); // for 32x32 image
+        Cursor crosshairCursor =
+            toolkit.createCustomCursor(cursorImage, hotspot, "Crosshair");
+
+        rs.getGLCanvas().setCursor(crosshairCursor);
+        cursorSet = true;
     }
 
     private void recenterMouse()
