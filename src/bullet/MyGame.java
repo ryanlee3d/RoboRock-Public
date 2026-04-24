@@ -856,8 +856,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             smallBuildings[i] = new GameObject(GameObject.root(), smallBuildingS, smallBuildingTx);
             smallBuildings[i].setLocalTranslation(new Matrix4f().translation(sbPositions[i][0], 0.0f, sbPositions[i][1]));
             smallBuildings[i].setLocalScale(new Matrix4f().scaling(0.01f));
-            smallBuildings[i].getRenderStates().setModelOrientationCorrection((new Matrix4f())
-                .rotateX((float)java.lang.Math.toRadians(270.0f)));
         }
 
         for (int i = 0; i < smallBuildings2.length; i++)
