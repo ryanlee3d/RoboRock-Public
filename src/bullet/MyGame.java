@@ -204,6 +204,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private float centerX, centerY;
     private float prevMouseX, prevMouseY;
     private float curMouseX, curMouseY;
+    private boolean cursorSet = false;
 
     // controlling the hud cam
     private float ohHeight = 32.0f;
@@ -378,6 +379,26 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         recenterMouse();
         prevMouseX = centerX;
         prevMouseY = centerY;
+
+        setCrosshairCursor();
+    }
+
+    private void setCrosshairCursor()
+    {
+        if (cursorSet || engine == null) return;
+
+        RenderSystem rs = engine.getRenderSystem();
+        if (rs == null || rs.getGLCanvas() == null) return;
+
+        Toolkit toolkit = Toolkit.getDefaultToolkit();
+        Image cursorImage = toolkit.getImage("./assets/textures/crosshairs.png");
+
+        Point hotspot = new Point(16, 16); // for 32x32 image
+        Cursor crosshairCursor =
+            toolkit.createCustomCursor(cursorImage, hotspot, "Crosshair");
+
+        rs.getGLCanvas().setCursor(crosshairCursor);
+        cursorSet = true;
     }
 
     private void recenterMouse()
@@ -863,8 +884,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             smallBuildings[i] = new GameObject(GameObject.root(), smallBuildingS, smallBuildingTx);
             smallBuildings[i].setLocalTranslation(new Matrix4f().translation(sbPositions[i][0], 0.0f, sbPositions[i][1]));
             smallBuildings[i].setLocalScale(new Matrix4f().scaling(0.01f));
-            smallBuildings[i].getRenderStates().setModelOrientationCorrection((new Matrix4f())
-                .rotateX((float)java.lang.Math.toRadians(270.0f)));
         }
 
         for (int i = 0; i < smallBuildings2.length; i++)
