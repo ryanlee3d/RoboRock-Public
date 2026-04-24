@@ -80,12 +80,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // player stats
     private int pHealth = 100;
-    private int pAmmo = 10;
 
     private final int pHealthMin = 0;
     private final int pHealthMax = 150;
-    private final int pAmmoMin = 0;
-    private final int pAmmoMax = 30;
+
+    // weapon indices
+    private static final int WEAPON_KNIFE = 0;
+    private static final int WEAPON_PISTOL = 1;
+    private static final int WEAPON_PLASMA = 2;
+    private static final int WEAPON_RIFLE = 3;
+    private static final int WEAPON_SHOTGUN = 4;
 
     // pickup respawn
     private final float pickupRespawnTime = 30.0f;
@@ -261,15 +265,33 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final float rifleFireDelay = 0.10f;
     private final float plasmaFireDelay = 0.18f;
     private final float shotgunFireDelay = 0.55f;
+    private final float pistolReloadTime = 1.20f;
+    private final float plasmaReloadTime = 1.60f;
+    private final float rifleReloadTime = 1.40f;
+    private final float shotgunReloadTime = 1.80f;
 
     private final float bulletLifeMax = 10.0f;
     private final float bulletRadius = 0.02f; 
     private final float plasmaRadius = 0.30f;
 
+    private final float worldGravity = -9.8f;
+    private final float bulletGravityScale = 0.01f;
+
     private final float bulletSpeed = 8.00f;
     private final float plasmaSpeed = 3.00f;
     private final float shotgunSpread = 0.12f;
     private final int shotgunPelletCount = 6;
+
+    private final int[] weaponMagazineCapacity = { 0, 12, 20, 30, 5 };
+    private final int[] weaponReserveCapacity = { 0, 48, 80, 120, 25 };
+    private final int[] weaponPickupAmount = { 0, 12, 20, 30, 5 };
+    private final int[] weaponInitialReserve = { 0, 24, 40, 60, 10 };
+    private final int[] weaponMagazineAmmo = new int[5];
+    private final int[] weaponReserveAmmo = new int[5];
+
+    private boolean isReloading = false;
+    private int reloadingWeaponIndex = -1;
+    private float reloadTimer = 0.0f;
 
     // getters
     public GameObject getAvatar() { return player; }
@@ -453,7 +475,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (knife != null)
         {
-            if (currentWeaponIndex == 0)
+            if (currentWeaponIndex == WEAPON_KNIFE)
             {
                 knife.setLocalScale(new Matrix4f().scaling(knifeWeaponScale));
                 knife.getRenderStates().setModelOrientationCorrection((new Matrix4f())
@@ -464,16 +486,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
 
         if (pistol != null)
-            pistol.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == 1 ? weaponScale : hiddenWeaponScale));
+            pistol.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_PISTOL ? weaponScale : hiddenWeaponScale));
 
         if (plasmaRifle != null)
-            plasmaRifle.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == 2 ? weaponScale : hiddenWeaponScale));
+            plasmaRifle.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_PLASMA ? weaponScale : hiddenWeaponScale));
 
         if (rifle != null)
-            rifle.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == 3 ? weaponScale : hiddenWeaponScale));
+            rifle.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_RIFLE ? weaponScale : hiddenWeaponScale));
 
         if (shotGun != null)
-            shotGun.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == 4 ? weaponScale + 0.8f : hiddenWeaponScale));
+            shotGun.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_SHOTGUN ? weaponScale + 0.8f : hiddenWeaponScale));
     }
 
     private void updateStaticObjectsToTerrain()
@@ -802,7 +824,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             .rotateX((float)java.lang.Math.toRadians(90.0f)));
         attachWeaponToPlayer(shotGun);
 
-        currentWeaponIndex = 0;
+        resetWeaponAmmoState();
+        isFiring = false;
+        isReloading = false;
+        reloadingWeaponIndex = -1;
+        reloadTimer = 0.0f;
+        fireCooldown = 0.0f;
+        currentWeaponIndex = WEAPON_KNIFE;
         updateWeaponVisibility();
 
         centerBuilding = new GameObject(GameObject.root(), centerBuildingS, centerBuildingTx);
@@ -941,7 +969,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     @Override
     public void initializePhysicsObjects()
     {
-        float[] gravity = {0f, -9.8f, 0f};
+        float[] gravity = {0f, worldGravity, 0f};
         physicsEngine = engine.getSceneGraph().getPhysicsEngine();
         physicsEngine.setGravity(gravity);
 
@@ -1049,7 +1077,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.RIGHT, panRight,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
-        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.R, recenter,
+        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.C, recenter,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.F,toggleFP,
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);          
@@ -1090,8 +1118,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (fireCooldown > 0.0f)
             fireCooldown -= dt;
 
-        if (isFiring && isAutomaticWeapon() && fireCooldown <= 0.0f && pAmmo > 0)
-            fireCurrentWeapon();
+        if (isReloading)
+        {
+            reloadTimer -= dt;
+            if (reloadTimer <= 0.0f)
+                finishReload();
+        }
+
+        if (isFiring && isAutomaticWeapon() && !isReloading && fireCooldown <= 0.0f)
+        {
+            if (getCurrentMagazineAmmo() > 0)
+                fireCurrentWeapon();
+            else if (getCurrentReserveAmmo() > 0)
+                beginReload();
+            else
+                isFiring = false;
+        }
 
         if (physicsRunning && physicsEngine != null)
         {
@@ -1170,7 +1212,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         camOver.setN(new Vector3f(0, -1, 0));
 
         engine.getHUDmanager().setHUD1("Health: " + pHealth, new Vector3f(0, 1, 0), 15, 660);
-        engine.getHUDmanager().setHUD2("Ammo: " + pAmmo, new Vector3f(1, 1, 1), 15, 630);
+        engine.getHUDmanager().setHUD2(getWeaponHudText(), new Vector3f(1, 1, 1), 15, 630);
         engine.getHUDmanager().setHUD3(
             String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
             new Vector3f(1, 1, 1), 15, 15
@@ -1284,6 +1326,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     gameState = GameState.PAUSED;
                     engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
                     break;
+                case KeyEvent.VK_R:
+                    beginReload();
+                    break;
                 case KeyEvent.VK_BACK_SLASH:
                     restartGame = new RestartGame(this);
                     restartGame.performAction(0, null);
@@ -1333,6 +1378,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         int clicks = e.getWheelRotation();
         if (clicks > 0) currentWeaponIndex = (currentWeaponIndex + 1) % 5;
         else if (clicks < 0) currentWeaponIndex = (currentWeaponIndex + 4) % 5;
+        cancelReload();
         updateWeaponVisibility();
     }
 
@@ -1343,7 +1389,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (e.getButton() != MouseEvent.BUTTON1) return;
 
         if (!weaponUsesBullets()) return;
-        if (pAmmo <= 0) return;
+        if (isReloading) return;
+
+        if (getCurrentMagazineAmmo() <= 0)
+        {
+            beginReload();
+            return;
+        }
 
         if (isAutomaticWeapon())
         {
@@ -1488,15 +1540,33 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
     }
 
-    public void setPlayerAmmo(int value)
+    public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
+    public int getPlayerHealth() { return pHealth; }
+    public int getPlayerAmmo() { return getCurrentMagazineAmmo() + getCurrentReserveAmmo(); }
+
+    private void resetWeaponAmmoState()
     {
-        pAmmo = java.lang.Math.max(pAmmoMin, java.lang.Math.min(value, pAmmoMax));
+        for (int i = 0; i < weaponMagazineAmmo.length; i++)
+        {
+            weaponMagazineAmmo[i] = weaponMagazineCapacity[i];
+            weaponReserveAmmo[i] = weaponInitialReserve[i];
+        }
     }
 
-    public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
-    public void addPlayerAmmo(int amount) { setPlayerAmmo(pAmmo + amount); }
-    public int getPlayerHealth() { return pHealth; }
-    public int getPlayerAmmo() { return pAmmo; }
+    private void addAmmoToWeaponReserve(int weaponIndex, int amount)
+    {
+        if (!isGunWeapon(weaponIndex) || amount <= 0) return;
+        weaponReserveAmmo[weaponIndex] = java.lang.Math.min(
+            weaponReserveCapacity[weaponIndex],
+            weaponReserveAmmo[weaponIndex] + amount
+        );
+    }
+
+    private void addAmmoPickupBundle()
+    {
+        for (int weaponIndex = WEAPON_PISTOL; weaponIndex <= WEAPON_SHOTGUN; weaponIndex++)
+            addAmmoToWeaponReserve(weaponIndex, weaponPickupAmount[weaponIndex]);
+    }
 
     private void hideAmmoPickup(int index)
     {
@@ -1548,7 +1618,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (ammoActive[i] && ammoPickups[i] != null && playerPos.distance(ammoPickups[i].getWorldLocation()) <= pickupCollisionRange)
             {
-                addPlayerAmmo(10);
+                addAmmoPickupBundle();
                 hideAmmoPickup(i);
                 if (aPsound != null) aPsound.play();
             }
@@ -1614,32 +1684,133 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         playerP.setLinearVelocity(new float[] { 0f, 0f, 0f });
     }
 
+    private boolean isGunWeapon(int weaponIndex)
+    {
+        return weaponIndex >= WEAPON_PISTOL && weaponIndex <= WEAPON_SHOTGUN;
+    }
+
     private boolean weaponUsesBullets()
     {
-        return currentWeaponIndex >= 1 && currentWeaponIndex <= 4;
+        return isGunWeapon(currentWeaponIndex);
     }
 
     private boolean isAutomaticWeapon()
     {
-        return currentWeaponIndex == 2 || currentWeaponIndex == 3; // plasma + rifle
+        return currentWeaponIndex == WEAPON_PLASMA || currentWeaponIndex == WEAPON_RIFLE;
+    }
+
+    private int getCurrentMagazineAmmo()
+    {
+        return weaponUsesBullets() ? weaponMagazineAmmo[currentWeaponIndex] : 0;
+    }
+
+    private int getCurrentReserveAmmo()
+    {
+        return weaponUsesBullets() ? weaponReserveAmmo[currentWeaponIndex] : 0;
+    }
+
+    private String getWeaponName(int weaponIndex)
+    {
+        switch (weaponIndex)
+        {
+            case WEAPON_KNIFE: return "Knife";
+            case WEAPON_PISTOL: return "Pistol";
+            case WEAPON_PLASMA: return "Plasma Rifle";
+            case WEAPON_RIFLE: return "Machine Gun";
+            case WEAPON_SHOTGUN: return "Shotgun";
+            default: return "Unknown";
+        }
+    }
+
+    private String getWeaponHudText()
+    {
+        if (!weaponUsesBullets())
+            return "Weapon: " + getWeaponName(currentWeaponIndex);
+
+        String status = isReloading ? "  Reloading..." : "";
+        return getWeaponName(currentWeaponIndex) + " Ammo: " +
+            getCurrentMagazineAmmo() + "/" + getCurrentReserveAmmo() + status;
+    }
+
+    private float getReloadTime(int weaponIndex)
+    {
+        switch (weaponIndex)
+        {
+            case WEAPON_PISTOL: return pistolReloadTime;
+            case WEAPON_PLASMA: return plasmaReloadTime;
+            case WEAPON_RIFLE: return rifleReloadTime;
+            case WEAPON_SHOTGUN: return shotgunReloadTime;
+            default: return 0.0f;
+        }
     }
 
     private float getCurrentFireDelay()
     {
         switch (currentWeaponIndex)
         {
-            case 1: return pistolFireDelay;
-            case 2: return plasmaFireDelay;
-            case 3: return rifleFireDelay;
-            case 4: return shotgunFireDelay;
+            case WEAPON_PISTOL: return pistolFireDelay;
+            case WEAPON_PLASMA: return plasmaFireDelay;
+            case WEAPON_RIFLE: return rifleFireDelay;
+            case WEAPON_SHOTGUN: return shotgunFireDelay;
             default: return 999f;
         }
+    }
+
+    private void beginReload()
+    {
+        if (!weaponUsesBullets()) return;
+        if (isReloading && reloadingWeaponIndex == currentWeaponIndex) return;
+        if (weaponMagazineAmmo[currentWeaponIndex] >= weaponMagazineCapacity[currentWeaponIndex]) return;
+        if (weaponReserveAmmo[currentWeaponIndex] <= 0) return;
+
+        isReloading = true;
+        reloadingWeaponIndex = currentWeaponIndex;
+        reloadTimer = getReloadTime(currentWeaponIndex);
+        isFiring = false;
+    }
+
+    private void finishReload()
+    {
+        if (!isGunWeapon(reloadingWeaponIndex))
+        {
+            cancelReload();
+            return;
+        }
+
+        int weaponIndex = reloadingWeaponIndex;
+        int ammoNeeded = weaponMagazineCapacity[weaponIndex] - weaponMagazineAmmo[weaponIndex];
+        int ammoToLoad = java.lang.Math.min(ammoNeeded, weaponReserveAmmo[weaponIndex]);
+
+        weaponMagazineAmmo[weaponIndex] += ammoToLoad;
+        weaponReserveAmmo[weaponIndex] -= ammoToLoad;
+
+        isReloading = false;
+        reloadingWeaponIndex = -1;
+        reloadTimer = 0.0f;
+    }
+
+    private void cancelReload()
+    {
+        isReloading = false;
+        reloadingWeaponIndex = -1;
+        reloadTimer = 0.0f;
+    }
+
+    private void consumeCurrentMagazineRound()
+    {
+        if (!weaponUsesBullets()) return;
+        weaponMagazineAmmo[currentWeaponIndex] = java.lang.Math.max(0, weaponMagazineAmmo[currentWeaponIndex] - 1);
     }
 
     private void fireCurrentWeapon()
     {
         if (!weaponUsesBullets()) return;
-        if (pAmmo <= 0) return;
+        if (isReloading) return;
+        if (getCurrentMagazineAmmo() <= 0)
+        {
+            beginReload();
+            return;
+        }
 
         Vector3f forward = new Vector3f(cam.getN()).normalize();
         Vector3f playerPos = player.getWorldLocation();
@@ -1651,22 +1822,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         switch (currentWeaponIndex)
         {
-            case 1: // pistol
+            case WEAPON_PISTOL:
                 spawnBullet(spawnPos, forward, false);
-                addPlayerAmmo(-1);
+                consumeCurrentMagazineRound();
                 break;
 
-            case 2: // plasma rifle
+            case WEAPON_PLASMA:
                 spawnBullet(spawnPos, forward, true);
-                addPlayerAmmo(-1);
+                consumeCurrentMagazineRound();
                 break;
 
-            case 3: // assault rifle
+            case WEAPON_RIFLE:
                 spawnBullet(spawnPos, forward, false);
-                addPlayerAmmo(-1);
+                consumeCurrentMagazineRound();
                 break;
 
-            case 4: // shotgun
+            case WEAPON_SHOTGUN:
                 for (int i = 0; i < shotgunPelletCount; i++)
                 {
                     Vector3f spreadDir = new Vector3f(forward).add(
@@ -1677,7 +1848,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                     spawnBullet(spawnPos, spreadDir, false);
                 }
-                addPlayerAmmo(-1);
+                consumeCurrentMagazineRound();
                 break;
         }
 
@@ -1707,6 +1878,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         bulletP.setBounciness(0.0f);
         bulletP.setFriction(0.2f);
         bulletP.setDamping(0.0f, 0.0f);
+        bulletP.setGravity(new float[] { 0f, worldGravity * bulletGravityScale, 0f });
         bulletP.disableSleeping();
 
         float speed = isPlasma ? plasmaSpeed : bulletSpeed;
