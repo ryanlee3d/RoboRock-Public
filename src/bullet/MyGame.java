@@ -98,6 +98,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private tage.audio.IAudioManager audioMgr;
     private tage.audio.Sound hPsound;
     private tage.audio.Sound aPsound;
+    private tage.audio.Sound pistolShotSound;
+    private tage.audio.Sound rifleShotSound;
+    private tage.audio.Sound plasmaRifleSound;
+    private tage.audio.Sound shotgunShotSound;
+    private tage.audio.Sound shotgunPumpSound;
+
+    private boolean rifleSoundPlaying = false;
+    private float shotgunPumpTimer = 0.0f;
+    private final float shotgunPumpDelay = 0.35f;
 
     // shapes and textures for game objects
     private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS;
@@ -175,6 +184,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // weapon cycling
     private int currentWeaponIndex = 0;
+
+    // weapon modes
+    private boolean plasmaBurstMode = true;
 
     // shared first-pass weapon transform
     private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f);
@@ -947,14 +959,83 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return;
         }
 
-        tage.audio.AudioResource healthRes = audioMgr.createAudioResource("healthPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource ammoRes = audioMgr.createAudioResource("ammoPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource healthRes =
+            audioMgr.createAudioResource("healthPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource ammoRes =
+            audioMgr.createAudioResource("ammoPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+
+        tage.audio.AudioResource pistolRes =
+            audioMgr.createAudioResource("shoot.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource rifleRes =
+            audioMgr.createAudioResource("shoot.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource plasmaRes =
+            audioMgr.createAudioResource("plasmaRifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource shotgunRes =
+            audioMgr.createAudioResource("shotGun.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource pumpRes =
+            audioMgr.createAudioResource("sgPump.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
 
         hPsound = new tage.audio.Sound(healthRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         aPsound = new tage.audio.Sound(ammoRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
 
+        pistolShotSound = new tage.audio.Sound(pistolRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+        rifleShotSound = new tage.audio.Sound(rifleRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+        plasmaRifleSound = new tage.audio.Sound(plasmaRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+        shotgunShotSound = new tage.audio.Sound(shotgunRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+        shotgunPumpSound = new tage.audio.Sound(pumpRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+
         hPsound.initialize(audioMgr);
         aPsound.initialize(audioMgr);
+
+        pistolShotSound.initialize(audioMgr);
+        rifleShotSound.initialize(audioMgr);
+        plasmaRifleSound.initialize(audioMgr);
+        shotgunShotSound.initialize(audioMgr);
+        shotgunPumpSound.initialize(audioMgr);
+    }
+
+    private boolean isShotgunPumping()
+    {
+        return shotgunPumpTimer > 0.0f;
+    }
+
+    private void playRifleLoopSound()
+    {
+        if (rifleShotSound != null && !rifleSoundPlaying)
+        {
+            rifleShotSound.play();
+            rifleSoundPlaying = true;
+        }
+    }
+
+    private void stopRifleLoopSound()
+    {
+        if (rifleShotSound != null && rifleSoundPlaying)
+        {
+            rifleShotSound.stop();
+            rifleSoundPlaying = false;
+        }
+    }
+
+    private void updateWeaponAudio(float dt)
+    {
+        if (shotgunPumpTimer > 0.0f)
+        {
+            float previous = shotgunPumpTimer;
+            shotgunPumpTimer -= dt;
+
+            if (previous > shotgunPumpDelay && shotgunPumpTimer <= shotgunPumpDelay)
+            {
+                if (shotgunPumpSound != null)
+                    shotgunPumpSound.play();
+            }
+
+            if (shotgunPumpTimer < 0.0f)
+                shotgunPumpTimer = 0.0f;
+        }
+
+        if (!(isFiring && currentWeaponIndex == 3 && fireCooldown > 0.0f))
+            stopRifleLoopSound();
     }
 
     @Override
@@ -1041,6 +1122,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         AbstractInputAction recenter = new OhRecenter();
         AbstractInputAction toggleFP = new ToggleFirstPersonAction();
         AbstractInputAction togglePhysics = new TogglePhysicsDebugAction();
+        AbstractInputAction togglePlasmaFireMode = new TogglePlasmaFireModeAction();
 
         // corrected bindings: W forward, S backward
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.W, fwdA,
@@ -1073,6 +1155,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.F,toggleFP,
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);          
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.P,togglePhysics,
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.B,togglePlasmaFireMode,
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
 
         setupNetworking();
@@ -1108,6 +1192,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (fireCooldown > 0.0f)
             fireCooldown -= dt;
+
+        updateWeaponAudio(dt);
 
         if (isFiring && isAutomaticWeapon() && fireCooldown <= 0.0f && pAmmo > 0)
             fireCurrentWeapon();
@@ -1363,6 +1449,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (!weaponUsesBullets()) return;
         if (pAmmo <= 0) return;
+        if (currentWeaponIndex == 4 && isShotgunPumping()) return;
 
         if (isAutomaticWeapon())
         {
@@ -1382,6 +1469,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (e.getButton() == MouseEvent.BUTTON1)
             isFiring = false;
+            stopRifleLoopSound();
     }
 
     @Override public void mouseClicked(MouseEvent e) {}
@@ -1498,6 +1586,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 engine.disablePhysicsWorldRender();
                 System.out.println("Physics Debug OFF");
+            }
+        }
+    }
+
+    private class TogglePlasmaFireModeAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (currentWeaponIndex == 2)
+            {
+                plasmaBurstMode = !plasmaBurstMode;
+                System.out.println("Plasma Rifle Mode: " + (plasmaBurstMode ? "BURST" : "FULL AUTO"));
             }
         }
     }
@@ -1640,7 +1741,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean isAutomaticWeapon()
     {
-        return currentWeaponIndex == 2 || currentWeaponIndex == 3; // plasma + rifle
+        if (currentWeaponIndex == 3) return true;               
+        if (currentWeaponIndex == 2 && !plasmaBurstMode) return true;
+        return false;
     }
 
     private float getCurrentFireDelay()
@@ -1659,11 +1762,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (!weaponUsesBullets()) return;
         if (pAmmo <= 0) return;
+        if (currentWeaponIndex == 4 && isShotgunPumping()) return;
 
         Vector3f forward = new Vector3f(cam.getN()).normalize();
         Vector3f playerPos = player.getWorldLocation();
 
-        // start near the player's upper body, then push forward
         Vector3f spawnPos = new Vector3f(playerPos)
             .add(0.0f, 1.5f, 0.0f)
             .add(new Vector3f(forward).mul(1.5f));
@@ -1673,16 +1776,34 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             case 1: // pistol
                 spawnBullet(spawnPos, forward, false);
                 addPlayerAmmo(-1);
+                if (pistolShotSound != null)
+                    pistolShotSound.play();
                 break;
 
             case 2: // plasma rifle
-                spawnBullet(spawnPos, forward, true);
-                addPlayerAmmo(-1);
+                if (plasmaBurstMode)
+                {
+                    int burstCount = java.lang.Math.min(3, pAmmo);
+                    for (int i = 0; i < burstCount; i++)
+                    {
+                        spawnBullet(spawnPos, forward, true);
+                        addPlayerAmmo(-1);
+                    }
+                }
+                else
+                {
+                    spawnBullet(spawnPos, forward, true);
+                    addPlayerAmmo(-1);
+                }
+
+                if (plasmaRifleSound != null)
+                    plasmaRifleSound.play();
                 break;
 
-            case 3: // assault rifle
+            case 3: // assault rifle, hold to fire
                 spawnBullet(spawnPos, forward, false);
                 addPlayerAmmo(-1);
+                playRifleLoopSound();
                 break;
 
             case 4: // shotgun
@@ -1697,6 +1818,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     spawnBullet(spawnPos, spreadDir, false);
                 }
                 addPlayerAmmo(-1);
+
+                if (shotgunShotSound != null)
+                    shotgunShotSound.play();
+
+                shotgunPumpTimer = shotgunFireDelay;
                 break;
         }
 
