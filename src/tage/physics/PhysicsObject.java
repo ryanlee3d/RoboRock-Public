@@ -217,6 +217,11 @@ public abstract class PhysicsObject
 	{	body.setDamping(linearDamping, angularDamping);
 	}
 
+	/** Sets the gravity vector for this physics object using a float array representing x, y, z */
+	public void setGravity(float[] gravity)
+	{	body.setGravity(new Vector3f(gravity[0], gravity[1], gravity[2]));
+	}
+
 	/** Gets the linear damping setting for this physics object */
 	public float getLinearDamping() 
 	{	return body.getLinearDamping();
