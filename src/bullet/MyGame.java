@@ -1947,68 +1947,6 @@ private void fireCurrentWeapon()
     Vector3f forward = new Vector3f(cam.getN()).normalize();
     Vector3f playerPos = player.getWorldLocation();
 
-    Vector3f spawnPos = new Vector3f(playerPos)
-        .add(0.0f, 1.5f, 0.0f)
-        .add(new Vector3f(forward).mul(1.5f));
-
-    switch (currentWeaponIndex)
-    {
-        case WEAPON_PISTOL:
-            spawnBullet(spawnPos, forward, false);
-            consumeCurrentMagazineRound();
-            if (pistolShotSound != null)
-                pistolShotSound.play();
-            break;
-
-        case WEAPON_PLASMA:
-            if (plasmaBurstMode)
-            {
-                int burstCount = java.lang.Math.min(3, getCurrentMagazineAmmo());
-                for (int i = 0; i < burstCount; i++)
-                {
-                    spawnBullet(spawnPos, forward, true);
-                    consumeCurrentMagazineRound();
-                }
-            }
-            else
-            {
-                spawnBullet(spawnPos, forward, true);
-                consumeCurrentMagazineRound();
-            }
-
-            if (plasmaRifleSound != null)
-                plasmaRifleSound.play();
-            break;
-
-        case WEAPON_RIFLE:
-            spawnBullet(spawnPos, forward, false);
-            consumeCurrentMagazineRound();
-            playRifleLoopSound();
-            break;
-
-        case WEAPON_SHOTGUN:
-            for (int i = 0; i < shotgunPelletCount; i++)
-            {
-                Vector3f spreadDir = new Vector3f(forward).add(
-                    ((float)Math.random() - 0.5f) * shotgunSpread,
-                    ((float)Math.random() - 0.5f) * shotgunSpread,
-                    ((float)Math.random() - 0.5f) * shotgunSpread
-                ).normalize();
-
-                spawnBullet(spawnPos, spreadDir, false);
-            }
-            consumeCurrentMagazineRound();
-
-            if (shotgunShotSound != null)
-                shotgunShotSound.play();
-
-            shotgunPumpTimer = shotgunFireDelay;
-            break;
-    }
-
-    fireCooldown = getCurrentFireDelay();
-}
-
         Vector3f spawnPos = new Vector3f(playerPos)
             .add(0.0f, 1.5f, 0.0f)
             .add(new Vector3f(forward).mul(1.5f));
