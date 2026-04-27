@@ -268,6 +268,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Integer> activeApeHealth = new java.util.ArrayList<>();
     private java.util.ArrayList<Boolean> activeApeDead = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeApeDeathTimers = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeApeThinkTimers = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeApeFireCooldowns = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeApeStrafeDirs = new java.util.ArrayList<>();
+
+    // ape bullets
+    private java.util.ArrayList<Boolean> activeBulletFromEnemy = new java.util.ArrayList<>();
 
     // ufo
     private int currentWave = 0;
@@ -602,6 +608,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApeHealth.add(100); 
         activeApeDead.add(false);
         activeApeDeathTimers.add(0.0f);
+        activeApeThinkTimers.add(0.0f);
+        activeApeFireCooldowns.add((float)(Math.random() * 1.5f));
+        activeApeStrafeDirs.add(Math.random() < 0.5 ? -1.0f : 1.0f);
     }
 
     private Vector3f getUfoStartPosition(Vector3f target)
@@ -627,6 +636,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApeHealth.remove(index);
         activeApeDead.remove(index);
         activeApeDeathTimers.remove(index);
+        activeApeThinkTimers.remove(index);
+        activeApeFireCooldowns.remove(index);
+        activeApeStrafeDirs.remove(index);
     }
 
     private void updateDeadApes(float dt)
@@ -640,6 +652,98 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (time <= 0.0f)
                 removeApe(i);
+        }
+    }
+
+    private void updateApeAI(float dt)
+    {
+        if (player == null) return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        for (int i = 0; i < activeApes.size(); i++)
+        {
+            if (activeApeDead.get(i)) continue;
+
+            GameObject apeObj = activeApes.get(i);
+            PhysicsObject apePhys = activeApePhysics.get(i);
+
+            if (apeObj == null || apePhys == null) continue;
+
+            Vector3f apePos = apePhys.getLocation();
+            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
+            float dist = toPlayer.length();
+
+            if (dist < 0.001f) continue;
+            toPlayer.normalize();
+
+            // face player
+            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
+
+            // circle player while staying in combat range
+            float preferredMin = 8.0f;
+            float preferredMax = 18.0f;
+            float moveSpeed = 3.0f;
+            float strafeDir = activeApeStrafeDirs.get(i);
+
+            Vector3f moveDir = new Vector3f();
+
+            // move toward player
+            if (dist > preferredMax)
+            {
+                moveDir.set(toPlayer.x, 0.0f, toPlayer.z);
+            }
+            // back away a bit
+            else if (dist < preferredMin)
+            {
+                moveDir.set(-toPlayer.x, 0.0f, -toPlayer.z);
+            }
+            // strafe around player
+            else
+            {
+                moveDir.set(-toPlayer.z * strafeDir, 0.0f, toPlayer.x * strafeDir);
+            }
+
+            if (moveDir.lengthSquared() > 0.0001f)
+            {
+                moveDir.normalize();
+                apePhys.setLinearVelocity(new float[]
+                {
+                    moveDir.x * moveSpeed,
+                    apePhys.getLinearVelocity()[1],
+                    moveDir.z * moveSpeed
+                });
+            }
+
+            // occasionally change strafe direction
+            float think = activeApeThinkTimers.get(i) + dt;
+            if (think >= 1.0f)
+            {
+                think = 0.0f;
+                if (Math.random() < 0.25)
+                {
+                    activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
+                }
+            }
+            activeApeThinkTimers.set(i, think);
+
+            // fire cooldown
+            float fireCd = activeApeFireCooldowns.get(i) - dt;
+            if (fireCd <= 0.0f && dist <= 25.0f)
+            {
+                Vector3f fireDir = new Vector3f(playerPos)
+                    .add(0.0f, 1.0f, 0.0f)
+                    .sub(apePos.x, apePos.y + 1.5f, apePos.z)
+                    .normalize();
+
+                Vector3f muzzlePos = new Vector3f(apePos.x, apePos.y + 1.5f, apePos.z)
+                    .add(new Vector3f(fireDir).mul(1.2f));
+
+                spawnEnemyBullet(muzzlePos, fireDir, true);
+                fireCd = 1.25f;   // ape fire rate
+            }
+            activeApeFireCooldowns.set(i, fireCd);
         }
     }
 
@@ -1246,6 +1350,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             physicsEngine.update(dt);
             syncGameObjectToPhysics(player);
         }
+
+        updateApeAI(dt);
 
         updateApesFromPhysics();
         updateActiveUfo(dt);
@@ -1954,7 +2060,7 @@ private void fireCurrentWeapon()
         switch (currentWeaponIndex)
         {
             case WEAPON_PISTOL:
-                spawnBullet(spawnPos, forward, false);
+                spawnPlayerBullet(spawnPos, forward, false);
                 consumeCurrentMagazineRound();
                 if (pistolShotSound != null)
                     pistolShotSound.play();
@@ -1966,13 +2072,13 @@ private void fireCurrentWeapon()
                     int burstCount = java.lang.Math.min(3, getCurrentMagazineAmmo());
                     for (int i = 0; i < burstCount; i++)
                     {
-                        spawnBullet(spawnPos, forward, true);
+                        spawnPlayerBullet(spawnPos, forward, true);
                         consumeCurrentMagazineRound();
                     }
                 }
                 else
                 {
-                    spawnBullet(spawnPos, forward, true);
+                    spawnPlayerBullet(spawnPos, forward, true);
                     consumeCurrentMagazineRound();
                 }
 
@@ -1981,7 +2087,7 @@ private void fireCurrentWeapon()
                 break;
 
             case WEAPON_RIFLE:
-                spawnBullet(spawnPos, forward, false);
+                spawnPlayerBullet(spawnPos, forward, false);
                 consumeCurrentMagazineRound();
                 playRifleLoopSound();
                 break;
@@ -1995,7 +2101,7 @@ private void fireCurrentWeapon()
                         ((float)Math.random() - 0.5f) * shotgunSpread
                     ).normalize();
 
-                    spawnBullet(spawnPos, spreadDir, false);
+                    spawnPlayerBullet(spawnPos, spreadDir, false);
                 }
                 consumeCurrentMagazineRound();
 
@@ -2008,7 +2114,7 @@ private void fireCurrentWeapon()
         fireCooldown = getCurrentFireDelay();
     }
 
-    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
+    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy)
     {
         GameObject bullet = new GameObject(
             GameObject.root(),
@@ -2037,7 +2143,6 @@ private void fireCurrentWeapon()
         float speed = isPlasma ? plasmaSpeed : bulletSpeed;
         Vector3f velocity = new Vector3f(dir).mul(speed);
         bulletP.setLinearVelocity(new float[] { velocity.x, velocity.y, velocity.z });
-
         bullet.setPhysicsObject(bulletP);
 
         activeBullets.add(bullet);
@@ -2045,6 +2150,17 @@ private void fireCurrentWeapon()
         activeBulletVelocities.add(velocity);
         activeBulletLifetimes.add(bulletLifeMax);
         activeBulletIsPlasma.add(isPlasma);
+        activeBulletFromEnemy.add(fromEnemy);
+    }
+   
+    private void spawnPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
+    {
+        spawnBullet(spawnPos, dir, isPlasma, false);
+    }
+
+    private void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
+    {
+        spawnBullet(spawnPos, dir, isPlasma, true);
     }
 
     private void updateBullets(float dt)
@@ -2063,38 +2179,55 @@ private void fireCurrentWeapon()
             Vector3f loc = bulletP.getLocation();
             bullet.setLocalTranslation(new Matrix4f().translation(loc.x, loc.y, loc.z));
 
+            boolean fromEnemy = activeBulletFromEnemy.get(i);
             boolean bulletRemoved = false;
 
-            // check collision with apes
-            for (int j = activeApes.size() - 1; j >= 0; j--)
+            if (fromEnemy)
             {
-                GameObject ape = activeApes.get(j);
-                Vector3f apePos = ape.getWorldLocation();
-
-                if (loc.distance(apePos) < 1.0f)
+                if (player != null)
                 {
-                    if (!activeApeDead.get(j))
-                    {
-                        int hp = activeApeHealth.get(j) - 100;
-                        activeApeHealth.set(j, hp);
+                    Vector3f playerPos = player.getWorldLocation();
 
+                    if (loc.distance(playerPos) < 1.0f)
+                    {
+                        addPlayerHealth(-10);
                         removeBullet(i);
                         bulletRemoved = true;
+                    }
+                }
+            }
+            else
+            {
+                for (int j = activeApes.size() - 1; j >= 0; j--)
+                {
+                    GameObject ape = activeApes.get(j);
+                    Vector3f apePos = ape.getWorldLocation();
 
-                        if (hp <= 0)
+                    if (loc.distance(apePos) < 1.0f)
+                    {
+                        if (!activeApeDead.get(j))
                         {
-                            activeApeDead.set(j, true);
-                            activeApeDeathTimers.set(j, 2.0f);
+                            int hp = activeApeHealth.get(j) - 100;
+                            activeApeHealth.set(j, hp);
 
-                            PhysicsObject apeP = activeApePhysics.get(j);
-                            if (apeP != null)
+                            removeBullet(i);
+                            bulletRemoved = true;
+
+                            if (hp <= 0)
                             {
-                                apeP.setAngularFactor(1f);
-                                apeP.applyTorque(0.0f, 0.0f, 35.0f);
+                                activeApeDead.set(j, true);
+                                activeApeDeathTimers.set(j, 2.0f);
+
+                                PhysicsObject apeP = activeApePhysics.get(j);
+                                if (apeP != null)
+                                {
+                                    apeP.setAngularFactor(1f);
+                                    apeP.applyTorque(0.0f, 0.0f, 35.0f);
+                                }
                             }
                         }
+                        break;
                     }
-                    break;
                 }
             }
 
@@ -2127,6 +2260,7 @@ private void fireCurrentWeapon()
         activeBulletVelocities.remove(index);
         activeBulletLifetimes.remove(index);
         activeBulletIsPlasma.remove(index);
+        activeBulletFromEnemy.remove(index);
     }
 
     private void startNextWave()
@@ -2201,11 +2335,6 @@ private void fireCurrentWeapon()
             Vector3f loc = apePhys.getLocation();
             Matrix4f locMat = new Matrix4f().translation(loc.x, loc.y - 1.1f, loc.z);
             apeObj.setLocalTranslation(locMat);
-
-            Quaternionf rot = apePhys.getRotation();
-            Matrix4f rotMat = new Matrix4f();
-            rot.get(rotMat);
-            apeObj.setLocalRotation(rotMat);
 
             apeObj.getRenderStates().setModelOrientationCorrection(
                 new Matrix4f()
