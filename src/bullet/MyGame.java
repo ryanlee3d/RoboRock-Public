@@ -111,7 +111,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private tage.audio.Sound shotgunShotSound;
     private tage.audio.Sound shotgunPumpSound;
 
-    private boolean rifleSoundPlaying = false;
+    //3d Sound
+    private tage.audio.Sound apePlasmaSound;
+
     private float shotgunPumpTimer = 0.0f;
     private final float shotgunPumpDelay = 0.35f;
 
@@ -980,6 +982,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 spawnEnemyBullet(muzzlePos, fireDir, true);
 
+                if (apePlasmaSound != null)
+                {
+                    apePlasmaSound.setLocation(muzzlePos);
+                    apePlasmaSound.play();
+                }
+
                 fireCd = 1.25f;
             }
 
@@ -1339,21 +1347,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             audioMgr.createAudioResource("ammoPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
 
         tage.audio.AudioResource pistolRes =
-            audioMgr.createAudioResource("shoot.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+            audioMgr.createAudioResource("pistol.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource rifleRes =
-            audioMgr.createAudioResource("shoot.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+            audioMgr.createAudioResource("rifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource plasmaRes =
             audioMgr.createAudioResource("plasmaRifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource shotgunRes =
             audioMgr.createAudioResource("shotGun.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource pumpRes =
             audioMgr.createAudioResource("sgPump.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource apePlasmaRes =
+            audioMgr.createAudioResource("apePlasma.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
 
         hPsound = new tage.audio.Sound(healthRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         aPsound = new tage.audio.Sound(ammoRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
 
         pistolShotSound = new tage.audio.Sound(pistolRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-        rifleShotSound = new tage.audio.Sound(rifleRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+        rifleShotSound = new tage.audio.Sound(rifleRes, tage.audio.SoundType.SOUND_EFFECT, 75, true);
         plasmaRifleSound = new tage.audio.Sound(plasmaRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         shotgunShotSound = new tage.audio.Sound(shotgunRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         shotgunPumpSound = new tage.audio.Sound(pumpRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
@@ -1366,29 +1376,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         plasmaRifleSound.initialize(audioMgr);
         shotgunShotSound.initialize(audioMgr);
         shotgunPumpSound.initialize(audioMgr);
+
+        apePlasmaSound = new tage.audio.Sound(apePlasmaRes, tage.audio.SoundType.SOUND_EFFECT, 100, false);
+        apePlasmaSound.initialize(audioMgr);
+
+        apePlasmaSound.setMaxDistance(35.0f);
+        apePlasmaSound.setMinDistance(1.0f);
+        apePlasmaSound.setRollOff(2.0f);
+    }
+
+    private void setEarParameters()
+    {
+        if (audioMgr == null || player == null || cam == null) return;
+
+        audioMgr.getEar().setLocation(player.getWorldLocation());
+
+        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+        audioMgr.getEar().setOrientation(forward, new Vector3f(0.0f, 1.0f, 0.0f));
     }
 
     private boolean isShotgunPumping()
     {
         return shotgunPumpTimer > 0.0f;
-    }
-
-    private void playRifleLoopSound()
-    {
-        if (rifleShotSound != null && !rifleSoundPlaying)
-        {
-            rifleShotSound.play();
-            rifleSoundPlaying = true;
-        }
-    }
-
-    private void stopRifleLoopSound()
-    {
-        if (rifleShotSound != null && rifleSoundPlaying)
-        {
-            rifleShotSound.stop();
-            rifleSoundPlaying = false;
-        }
     }
 
     private void updateWeaponAudio(float dt)
@@ -1407,9 +1416,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             if (shotgunPumpTimer < 0.0f)
                 shotgunPumpTimer = 0.0f;
         }
-
-        if (!(isFiring && currentWeaponIndex == 3 && fireCooldown > 0.0f))
-            stopRifleLoopSound();
     }
 
     @Override
@@ -1535,6 +1541,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         setupNetworking();
         initAudio();
+        setEarParameters();
     }
 
     @Override
@@ -1561,6 +1568,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         elapsTime += dt;
 
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
+        setEarParameters();
         im.update(dt);
 
         processNetworking(dt);
@@ -2012,6 +2020,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             }
         }
     }
+
+
     
     public void setPlayerHealth(int value)
     {
@@ -2607,6 +2617,22 @@ private void fireCurrentWeapon()
             );
 
             spawnApe(apeDrop);
+        }
+    }
+
+    private void playRifleLoopSound()
+    {
+        if (rifleShotSound != null && !rifleShotSound.getIsPlaying())
+        {
+            rifleShotSound.play();
+        }
+    }
+
+    private void stopRifleLoopSound()
+    {
+        if (rifleShotSound != null && rifleShotSound.getIsPlaying())
+        {
+            rifleShotSound.stop();
         }
     }
 
