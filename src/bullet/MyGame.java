@@ -27,20 +27,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 {
     private static Engine engine;
 
-    private enum GameState
-    {
-        MENU,
-        PLAYING,
-        PAUSED,
-        GAME_OVER
-    }
-
     private boolean isShuttingDown = false;
     private GameState gameState = GameState.MENU;
     private int menuSelection = 0;
     private final MainMenu menu = new MainMenu();
 
     private boolean physicsDebug = true;
+    private final GameAudio gameAudio = new GameAudio();
+    private final PickupManager pickupManager = new PickupManager(this);
+    private final UfoWaveManager ufoWaveManager;
 
     private InputManager im;
     private CameraOrbit3D orbitCam;
@@ -48,6 +43,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private Camera camOver;
 
     private boolean firstPersonMode = false;
+    private final OverheadCameraController overheadCameraController = new OverheadCameraController();
 
     // tweak these until the gun lines up: x = right, y = up, z = forward from player center
     private Vector3f fpOffset = new Vector3f(0.08f, 1.55f, -0.18f);
@@ -58,20 +54,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private IAction restartGame;
 
     // game objects
-    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding, largeUfo;
+    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
 
     // instances of game objects for repeat use
     private GameObject[] smallBuildings = new GameObject[8];
     private GameObject[] smallBuildings2 = new GameObject[8];
-    private GameObject[] ufos = new GameObject[8];
-    private GameObject[] ammoPickups;
-    private GameObject[] healthPickups;
-
-
-    private boolean[] ammoActive;
-    private boolean[] healthActive;
-    private float[] ammoRespawnTimers;
-    private float[] healthRespawnTimers;
 
     // shapes for animated objects
     private AnimatedShape playerS, skinnyS, apeS;
@@ -87,35 +74,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final int pHealthMin = 0;
     private final int pHealthMax = 150;
 
-    // weapon indices
-    private static final int WEAPON_KNIFE = 0;
-    private static final int WEAPON_PISTOL = 1;
-    private static final int WEAPON_PLASMA = 2;
-    private static final int WEAPON_RIFLE = 3;
-    private static final int WEAPON_SHOTGUN = 4;
-
-    // pickup respawn
-    private final float pickupRespawnTime = 30.0f;
-
-    // pickup collision tuning
-    private final float pickupCollisionRange = 1.5f;
-    private final float hiddenPickupScale = 0.0001f;
-
-    // audio
-    private tage.audio.IAudioManager audioMgr;
-    private tage.audio.Sound hPsound;
-    private tage.audio.Sound aPsound;
-    private tage.audio.Sound pistolShotSound;
-    private tage.audio.Sound rifleShotSound;
-    private tage.audio.Sound plasmaRifleSound;
-    private tage.audio.Sound shotgunShotSound;
-    private tage.audio.Sound shotgunPumpSound;
-
-    //3d Sound
-    private tage.audio.Sound apePlasmaSound;
-
-    private float shotgunPumpTimer = 0.0f;
-    private final float shotgunPumpDelay = 0.35f;
+    private final WeaponInventory weaponInventory = new WeaponInventory();
 
     // shapes and textures for game objects
     private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS;
@@ -123,64 +82,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
         heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx;
 
-    // pickup object animation values
-    private float ammoBobTime = 0.0f;
-    private float healthSpin = 0.0f;
-
-    // pickup positions
-    private final Vector3f[] ammoSpawnPositions =
-    {
-        new Vector3f(-46.0f, 0.0f, -13.0f),
-        new Vector3f(-91.0f, 0.0f,  56.0f),
-        new Vector3f(-58.0f, 0.0f,  89.0f),
-        new Vector3f(-36.0f, 0.0f,  76.0f),
-        new Vector3f( 60.0f, 0.0f, -19.0f),
-        new Vector3f( 94.0f, 0.0f, -36.0f),
-        new Vector3f( 68.0f, 0.0f, -81.0f),
-        new Vector3f( 37.0f, 0.0f,   4.0f)
-    };
-
-    private final Vector3f[] healthSpawnPositions =
-    {
-        new Vector3f(-44.0f, 0.0f, -11.0f),
-        new Vector3f(-89.0f, 0.0f,  58.0f),
-        new Vector3f(-56.0f, 0.0f,  91.0f),
-        new Vector3f(-29.0f, 0.0f,  30.0f),
-        new Vector3f( 62.0f, 0.0f, -17.0f),
-        new Vector3f( 96.0f, 0.0f, -34.0f),
-        new Vector3f( 70.0f, 0.0f, -79.0f),
-        new Vector3f( 26.0f, 0.0f, -90.0f)
-    };
-
-    // ufo spawn positions
-    private final Vector3f[] ufoDropPositions =
-    {
-        new Vector3f(-64.48f, 5.99f,  38.01f),
-        new Vector3f(-76.82f, 7.92f,  -5.37f),
-        new Vector3f( 21.98f, 5.14f, -15.00f),
-        new Vector3f( 66.83f, 5.45f, -28.26f),
-        new Vector3f( 39.35f, 4.94f, -67.59f),
-        new Vector3f( 86.69f, 5.45f, -52.79f),
-        new Vector3f(-27.04f, 5.65f,  11.53f),
-        new Vector3f(-50.59f, 6.23f,  -6.37f)
-    };
-
-    private final Vector3f largeUfoDropPosition = new Vector3f(69.30f, 4.94f, -64.08f);
-
-    private GameObject activeUfo = null;
-    private Vector3f activeUfoStart = new Vector3f();
-    private Vector3f activeUfoTarget = new Vector3f();
-    private float activeUfoTravelTime = 0.0f;
-    private float activeUfoTravelDuration = 6.0f;
-    private boolean activeUfoIsLarge = false;
-    private int activeUfoDropCount = 0;
-    private boolean waveDropFinished = false;     
-
     // object init locations and scale
     private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
     private float playerScale = 0.01f;
-    private float ammoScale = 0.3f;
-    private float healthScale = 0.3f;
 
     // player / terrain tuning
     private float playerCapsuleRadius = 0.5f;
@@ -191,11 +95,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private static final float maxClimbSlope = 1.2f;
     private static final float maxStepHeight = 0.5f;
 
-    // weapon cycling
-    private int currentWeaponIndex = 0;
-
-    // weapon modes
-    private boolean plasmaBurstMode = true;
+    private Vector3f currentMoveDir = new Vector3f();
+    private float currentMoveSpeed = 8.0f;
 
     // shared first-pass weapon transform
     private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f);
@@ -223,14 +124,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private float curMouseX, curMouseY;
     private boolean cursorSet = false;
 
-    // controlling the hud cam
-    private float ohHeight = 32.0f;
-    private float ohMinH = 6.0f;
-    private float ohMaxH = 60.0f;
-    private float ohPanX = 0.0f;
-    private float ohPanZ = 0.0f;
-    private float ohPanStep = 1.0f;
-
     // networking fields
     private GhostManager gm;
     private String serverAddress;
@@ -241,10 +134,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // skyboxes
     private int spaceSkyBox, fluffySkyBox;
-
-    // lights
-    private Light[] ammoLights;
-    private Light[] healthLights;
 
     // map selection
     private int mapSelection = 0;
@@ -257,15 +146,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ObjShape bulletSphereS;
     private TextureImage bulletYellowTx;
     private TextureImage bulletBlueTx;
-
-    private java.util.ArrayList<GameObject> activeBullets = new java.util.ArrayList<>();
-    private java.util.ArrayList<PhysicsObject> activeBulletPhysics = new java.util.ArrayList<>();
-    private java.util.ArrayList<Vector3f> activeBulletVelocities = new java.util.ArrayList<>();
-    private java.util.ArrayList<Float> activeBulletLifetimes = new java.util.ArrayList<>();
-    private java.util.ArrayList<Boolean> activeBulletIsPlasma = new java.util.ArrayList<>();
+    private final BulletManager bulletManager = new BulletManager(this);
 
     private boolean isFiring = false;
-    private float fireCooldown = 0.0f;
 
     // apes
     private java.util.ArrayList<GameObject> activeApes = new java.util.ArrayList<>();
@@ -281,70 +164,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private float apeThinkTimer = 0.0f;
     private final float apeThinkInterval = 0.25f;
 
-    // ape bullets
-    private java.util.ArrayList<Boolean> activeBulletFromEnemy = new java.util.ArrayList<>();
-
-    // ufo
-    private int currentWave = 0;
-    private boolean ufoActive = false;
-
-    // tuning
-    private final float pistolFireDelay = 0.25f;
-    private final float rifleFireDelay = 0.10f;
-    private final float plasmaFireDelay = 0.18f;
-    private final float shotgunFireDelay = 0.55f;
-    private final float pistolReloadTime = 1.20f;
-    private final float plasmaReloadTime = 1.60f;
-    private final float rifleReloadTime = 1.40f;
-    private final float shotgunReloadTime = 1.80f;
-
-    private final float bulletLifeMax = 10.0f;
-    private final float bulletRadius = 0.02f; 
-    private final float plasmaRadius = 0.30f;
-
     private final float worldGravity = -9.8f;
-    private final float bulletGravityScale = 0.01f;
-
-    private final float bulletSpeed = 8.00f;
-    private final float plasmaSpeed = 3.00f;
     private final float shotgunSpread = 0.12f;
     private final int shotgunPelletCount = 6;
-
-    private final int[] weaponMagazineCapacity = { 0, 12, 20, 30, 5 };
-    private final int[] weaponReserveCapacity = { 0, 48, 80, 120, 25 };
-    private final int[] weaponPickupAmount = { 0, 12, 20, 30, 5 };
-    private final int[] weaponInitialReserve = { 0, 24, 40, 60, 10 };
-    private final int[] weaponMagazineAmmo = new int[5];
-    private final int[] weaponReserveAmmo = new int[5];
-
-    private boolean isReloading = false;
-    private int reloadingWeaponIndex = -1;
-    private float reloadTimer = 0.0f;
-
-    // getters
-    public GameObject getAvatar() { return player; }
-    public Camera getCamera() { return cam; }
-    public ObjShape getGhostShape() { return ghostS; }
-    public TextureImage getGhostTexture() { return ghostT; }
-    public GhostManager getGhostManager() { return gm; }
-    public float getPlayerScale() { return playerScale; }
-    public Engine getEngine() { return engine; }
-    public ProtocolClient getProtocolClient() { return protClient; }
-
-    public void setMapSelection(int selection) { mapSelection = selection; }
-    public void setGameState(String state) { gameState = GameState.valueOf(state); }
-    public void setIsConnected(boolean value) { isClientConnected = value; }
-
-    public Vector3f getPlayerPosition()
-    {
-        if (player == null) return new Vector3f(0, 0, 0);
-        return player.getWorldLocation();
-    }
 
     public MyGame(String serverAddress, int serverPort, String protocol)
     {
         super();
         gm = new GhostManager(this);
+        ufoWaveManager = new UfoWaveManager(this::spawnApe);
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
         serverProtocol = protocol.toUpperCase().compareTo("TCP") == 0 ? ProtocolType.TCP : ProtocolType.UDP;
@@ -521,9 +349,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void updateWeaponVisibility()
     {
+        WeaponType currentWeapon = weaponInventory.getCurrentWeapon();
+
         if (knife != null)
         {
-            if (currentWeaponIndex == WEAPON_KNIFE)
+            if (currentWeapon == WeaponType.KNIFE)
             {
                 knife.setLocalScale(new Matrix4f().scaling(knifeWeaponScale));
                 knife.getRenderStates().setModelOrientationCorrection((new Matrix4f())
@@ -534,16 +364,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
 
         if (pistol != null)
-            pistol.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_PISTOL ? weaponScale : hiddenWeaponScale));
+            pistol.setLocalScale(new Matrix4f().scaling(currentWeapon == WeaponType.PISTOL ? weaponScale : hiddenWeaponScale));
 
         if (plasmaRifle != null)
-            plasmaRifle.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_PLASMA ? weaponScale : hiddenWeaponScale));
+            plasmaRifle.setLocalScale(new Matrix4f().scaling(currentWeapon == WeaponType.PLASMA_RIFLE ? weaponScale : hiddenWeaponScale));
 
         if (rifle != null)
-            rifle.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_RIFLE ? weaponScale : hiddenWeaponScale));
+            rifle.setLocalScale(new Matrix4f().scaling(currentWeapon == WeaponType.RIFLE ? weaponScale : hiddenWeaponScale));
 
         if (shotGun != null)
-            shotGun.setLocalScale(new Matrix4f().scaling(currentWeaponIndex == WEAPON_SHOTGUN ? weaponScale + 0.8f : hiddenWeaponScale));
+            shotGun.setLocalScale(new Matrix4f().scaling(currentWeapon == WeaponType.SHOTGUN ? weaponScale + 0.8f : hiddenWeaponScale));
     }
 
     private void updateStaticObjectsToTerrain()
@@ -632,13 +462,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApeFireCooldowns.add((float)(Math.random() * 1.5f));
         activeApeStrafeDirs.add(Math.random() < 0.5 ? -1.0f : 1.0f);
         activeApeTrees.add(createApeBehaviorTree(newApe, apeP));
-    }
-
-    private Vector3f getUfoStartPosition(Vector3f target)
-    {
-        float startX = target.x < 0 ? -140.0f : 140.0f;
-        float startZ = target.z < 0 ? -140.0f : 140.0f;
-        return new Vector3f(startX, target.y + 25.0f, startZ);
     }
 
     private void removeApe(int index)
@@ -982,11 +805,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 spawnEnemyBullet(muzzlePos, fireDir, true);
 
-                if (apePlasmaSound != null)
-                {
-                    apePlasmaSound.setLocation(muzzlePos);
-                    apePlasmaSound.play();
-                }
+                gameAudio.playApePlasma(muzzlePos);
 
                 fireCd = 1.25f;
             }
@@ -1154,28 +973,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         apePlasmaRifle.propagateScale(true);
         apePlasmaRifle.applyParentRotationToPosition(true);
 
-        ammoPickups = new GameObject[ammoSpawnPositions.length];
-        ammoActive = new boolean[ammoSpawnPositions.length];
-        ammoRespawnTimers = new float[ammoSpawnPositions.length];
-        for (int i = 0; i < ammoSpawnPositions.length; i++)
-        {
-            ammoPickups[i] = new GameObject(GameObject.root(), ammoS, ammoTx);
-            ammoPickups[i].setLocalTranslation(new Matrix4f().translation(ammoSpawnPositions[i].x, 0.0f, ammoSpawnPositions[i].z));
-            ammoPickups[i].setLocalScale(new Matrix4f().scaling(ammoScale));
-            ammoActive[i] = true;
-        }
-
-        healthPickups = new GameObject[healthSpawnPositions.length];
-        healthActive = new boolean[healthSpawnPositions.length];
-        healthRespawnTimers = new float[healthSpawnPositions.length];
-        for (int i = 0; i < healthSpawnPositions.length; i++)
-        {
-            healthPickups[i] = new GameObject(GameObject.root(), healthS, healthTx);
-            healthPickups[i].setLocalTranslation(new Matrix4f().translation(healthSpawnPositions[i].x, 0.0f, healthSpawnPositions[i].z));
-            healthPickups[i].setLocalScale(new Matrix4f().scaling(healthScale));
-            healthPickups[i].getRenderStates().setModelOrientationCorrection((new Matrix4f()).rotationX((float)java.lang.Math.toRadians(90.0f)));
-            healthActive[i] = true;
-        }
+        pickupManager.buildObjects(ammoS, ammoTx, healthS, healthTx);
 
         knife = new GameObject(GameObject.root(), knifeS, knifeTx);
         knife.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
@@ -1211,13 +1009,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             .rotateX((float)java.lang.Math.toRadians(90.0f)));
         attachWeaponToPlayer(shotGun);
 
-        resetWeaponAmmoState();
+        weaponInventory.reset();
         isFiring = false;
-        isReloading = false;
-        reloadingWeaponIndex = -1;
-        reloadTimer = 0.0f;
-        fireCooldown = 0.0f;
-        currentWeaponIndex = WEAPON_KNIFE;
         updateWeaponVisibility();
 
         centerBuilding = new GameObject(GameObject.root(), centerBuildingS, centerBuildingTx);
@@ -1234,16 +1027,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {-24.0f, -18.0f}, {-5.0f, 35.0f}, {10.0f, -42.0f}, {44.0f, -10.0f}
         };
 
-        for (int i = 0; i < ufos.length; i++)
-        {
-            ufos[i] = new GameObject(GameObject.root(), ufoS, ufoTx);
-            ufos[i].setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
-            ufos[i].setLocalScale(new Matrix4f().scaling(0.05f));
-        }
-
-        largeUfo = new GameObject(GameObject.root(), ufoS, ufoTx);
-        largeUfo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
-        largeUfo.setLocalScale(new Matrix4f().scaling(0.25f));
+        ufoWaveManager.buildObjects(ufoS, ufoTx);
 
         for (int i = 0; i < smallBuildings.length; i++)
         {
@@ -1264,6 +1048,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         terr.setLocalScale((new Matrix4f()).scaling(100.0f, 50.0f, 100.0f));
         terr.getRenderStates().setTiling(1);
 
+        bulletManager.buildObjects(bulletSphereS, bulletYellowTx, bulletBlueTx);
+
         applyMapSelection();
     }
 
@@ -1276,33 +1062,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         mainLight.setLocation(new Vector3f(0.0f, 0.0f, 0.0f));
         engine.getSceneGraph().addLight(mainLight);
 
-        ammoLights = new Light[ammoSpawnPositions.length];
-        for (int i = 0; i < ammoLights.length; i++)
-        {
-            ammoLights[i] = new Light();
-            ammoLights[i].setDiffuse(0.2f, 1.0f, 0.2f);
-            ammoLights[i].setSpecular(0.2f, 0.6f, 1.0f);
-            ammoLights[i].setAmbient(0.05f, 0.1f, 0.2f);
-            ammoLights[i].setType(Light.LightType.SPOTLIGHT);
-            ammoLights[i].setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
-            ammoLights[i].setCutoffAngle(20.0f);
-            ammoLights[i].setOffAxisExponent(10.0f);
-            engine.getSceneGraph().addLight(ammoLights[i]);
-        }
-
-        healthLights = new Light[healthSpawnPositions.length];
-        for (int i = 0; i < healthLights.length; i++)
-        {
-            healthLights[i] = new Light();
-            healthLights[i].setDiffuse(0.2f, 0.6f, 1.0f);
-            healthLights[i].setSpecular(0.2f, 1.0f, 0.2f);
-            healthLights[i].setAmbient(0.05f, 0.2f, 0.05f);
-            healthLights[i].setType(Light.LightType.SPOTLIGHT);
-            healthLights[i].setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
-            healthLights[i].setCutoffAngle(20.0f);
-            healthLights[i].setOffAxisExponent(10.0f);
-            engine.getSceneGraph().addLight(healthLights[i]);
-        }
+        pickupManager.initializeLights(engine);
     }
 
     @Override
@@ -1326,7 +1086,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         mainCamera.setV(new Vector3f(0, 1, 0));
         mainCamera.setN(new Vector3f(0, 0, -1));
 
-        overCamera.setLocation(new Vector3f(0, ohHeight, 0));
+        overCamera.setLocation(new Vector3f(0, overheadCameraController.getHeight(), 0));
         overCamera.setU(new Vector3f(1, 0, 0));
         overCamera.setV(new Vector3f(0, 0, -1));
         overCamera.setN(new Vector3f(0, -1, 0));
@@ -1334,88 +1094,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void initAudio()
     {
-        audioMgr = engine.getAudioManager();
-        if (audioMgr == null)
-        {
-            System.out.println("Audio manager not available from engine.");
-            return;
-        }
-
-        tage.audio.AudioResource healthRes =
-            audioMgr.createAudioResource("healthPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource ammoRes =
-            audioMgr.createAudioResource("ammoPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-
-        tage.audio.AudioResource pistolRes =
-            audioMgr.createAudioResource("pistol.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource rifleRes =
-            audioMgr.createAudioResource("rifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource plasmaRes =
-            audioMgr.createAudioResource("plasmaRifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource shotgunRes =
-            audioMgr.createAudioResource("shotGun.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource pumpRes =
-            audioMgr.createAudioResource("sgPump.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-        tage.audio.AudioResource apePlasmaRes =
-            audioMgr.createAudioResource("apePlasma.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
-
-        hPsound = new tage.audio.Sound(healthRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-        aPsound = new tage.audio.Sound(ammoRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-
-        pistolShotSound = new tage.audio.Sound(pistolRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-        rifleShotSound = new tage.audio.Sound(rifleRes, tage.audio.SoundType.SOUND_EFFECT, 75, true);
-        plasmaRifleSound = new tage.audio.Sound(plasmaRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-        shotgunShotSound = new tage.audio.Sound(shotgunRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-        shotgunPumpSound = new tage.audio.Sound(pumpRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-
-        hPsound.initialize(audioMgr);
-        aPsound.initialize(audioMgr);
-
-        pistolShotSound.initialize(audioMgr);
-        rifleShotSound.initialize(audioMgr);
-        plasmaRifleSound.initialize(audioMgr);
-        shotgunShotSound.initialize(audioMgr);
-        shotgunPumpSound.initialize(audioMgr);
-
-        apePlasmaSound = new tage.audio.Sound(apePlasmaRes, tage.audio.SoundType.SOUND_EFFECT, 100, false);
-        apePlasmaSound.initialize(audioMgr);
-
-        apePlasmaSound.setMaxDistance(35.0f);
-        apePlasmaSound.setMinDistance(1.0f);
-        apePlasmaSound.setRollOff(2.0f);
+        gameAudio.initialize(engine);
     }
 
     private void setEarParameters()
     {
-        if (audioMgr == null || player == null || cam == null) return;
-
-        audioMgr.getEar().setLocation(player.getWorldLocation());
-
-        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
-        audioMgr.getEar().setOrientation(forward, new Vector3f(0.0f, 1.0f, 0.0f));
+        gameAudio.setEarParameters(player, cam);
     }
 
     private boolean isShotgunPumping()
     {
-        return shotgunPumpTimer > 0.0f;
+        return gameAudio.isShotgunPumping();
     }
 
     private void updateWeaponAudio(float dt)
     {
-        if (shotgunPumpTimer > 0.0f)
-        {
-            float previous = shotgunPumpTimer;
-            shotgunPumpTimer -= dt;
-
-            if (previous > shotgunPumpDelay && shotgunPumpTimer <= shotgunPumpDelay)
-            {
-                if (shotgunPumpSound != null)
-                    shotgunPumpSound.play();
-            }
-
-            if (shotgunPumpTimer < 0.0f)
-                shotgunPumpTimer = 0.0f;
-        }
+        gameAudio.updateWeaponAudio(dt);
     }
 
     @Override
@@ -1458,6 +1152,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		terrainP.disableSleeping();
 		terr.setPhysicsObject(terrainP);
 
+        bulletManager.setPhysicsEngine(physicsEngine);
+
         engine.enableGraphicsWorldRender();
         if (physicsDebug)
             engine.enablePhysicsWorldRender();
@@ -1475,6 +1171,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
         camOver = engine.getRenderSystem().getViewport("OVERHEAD").getCamera();
         orbitCam = new CameraOrbit3D(cam, player, playerScale);
+        overheadCameraController.setOrbitCam(orbitCam);
 
         lastFrameTime = System.currentTimeMillis();
         currFrameTime = System.currentTimeMillis();
@@ -1491,18 +1188,33 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         StrafeAction leftS = new StrafeAction(this, 25.0f, cam);
         StrafeAction rightS = new StrafeAction(this, -25.0f, cam);
 
-        AbstractInputAction zoomIn = new OverheadZoomInAction();
-        AbstractInputAction zoomOut = new OverheadZoomOutAction();
-        AbstractInputAction elevUp = new ElevationUp();
-        AbstractInputAction elevDown = new ElevationDown();
-        AbstractInputAction panUp = new OhPUA();
-        AbstractInputAction panDown = new OhPDA();
-        AbstractInputAction panLeft = new OhPLA();
-        AbstractInputAction panRight = new OhPRA();
-        AbstractInputAction recenter = new OhRecenter();
-        AbstractInputAction toggleFP = new ToggleFirstPersonAction();
-        AbstractInputAction togglePhysics = new TogglePhysicsDebugAction();
-        AbstractInputAction togglePlasmaFireMode = new TogglePlasmaFireModeAction();
+        AbstractInputAction zoomIn = overheadCameraController.createZoomInAction();
+        AbstractInputAction zoomOut = overheadCameraController.createZoomOutAction();
+        AbstractInputAction elevUp = overheadCameraController.createElevationUpAction();
+        AbstractInputAction elevDown = overheadCameraController.createElevationDownAction();
+        AbstractInputAction panUp = overheadCameraController.createPanUpAction();
+        AbstractInputAction panDown = overheadCameraController.createPanDownAction();
+        AbstractInputAction panLeft = overheadCameraController.createPanLeftAction();
+        AbstractInputAction panRight = overheadCameraController.createPanRightAction();
+        AbstractInputAction recenter = overheadCameraController.createRecenterAction();
+        AbstractInputAction toggleFP = new AbstractInputAction() {
+            @Override
+            public void performAction(float time, net.java.games.input.Event e) {
+                toggleFirstPersonMode();
+            }
+        };
+        AbstractInputAction togglePhysics = new AbstractInputAction() {
+            @Override
+            public void performAction(float time, net.java.games.input.Event e) {
+                togglePhysicsDebug();
+            }
+        };
+        AbstractInputAction togglePlasmaFireMode = new AbstractInputAction() {
+            @Override
+            public void performAction(float time, net.java.games.input.Event e) {
+                togglePlasmaFireMode();
+            }
+        };
 
         // corrected bindings: W forward, S backward
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.W, fwdA,
@@ -1569,31 +1281,42 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
         setEarParameters();
+        
+        currentMoveDir.set(0, 0, 0);
         im.update(dt);
+
+        if (playerP != null)
+        {
+            float[] vel = playerP.getLinearVelocity();
+            if (currentMoveDir.lengthSquared() > 0.0001f)
+            {
+                currentMoveDir.normalize();
+                playerP.setLinearVelocity(new float[] {
+                    currentMoveDir.x * currentMoveSpeed,
+                    vel[1], // Preserve Y velocity for gravity/falling
+                    currentMoveDir.z * currentMoveSpeed
+                });
+            }
+            else
+            {
+                playerP.setLinearVelocity(new float[] { 0f, vel[1], 0f });
+            }
+        }
 
         processNetworking(dt);
 
-        if (fireCooldown > 0.0f)
-            fireCooldown -= dt;
-
+        weaponInventory.updateTimers(dt);
         updateWeaponAudio(dt);
 
-        if (isReloading)
+        if (isFiring && weaponInventory.isAutomaticWeapon() && !weaponInventory.isReloading() && !weaponInventory.isCoolingDown())
         {
-            reloadTimer -= dt;
-            if (reloadTimer <= 0.0f)
-                finishReload();
-        }
-
-        if (isFiring && isAutomaticWeapon() && !isReloading && fireCooldown <= 0.0f)
-        {
-            if (getCurrentMagazineAmmo() > 0)
+            if (weaponInventory.getCurrentMagazineAmmo() > 0)
                 fireCurrentWeapon();
-            else if (getCurrentReserveAmmo() > 0)
-                beginReload();
+            else if (weaponInventory.getCurrentReserveAmmo() > 0)
+                weaponInventory.beginReload();
             else
                 isFiring = false;
-        }     
+        }
 
         if (physicsRunning && physicsEngine != null)
         {
@@ -1604,10 +1327,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         updateApeBehaviorTrees(dt);
 
         updateApesFromPhysics();
-        updateActiveUfo(dt);
+        ufoWaveManager.update(dt);
         updateDeadApes(dt);
 
-        updateBullets(dt);
+        bulletManager.update(dt);
 
         if (!mouseModeInitiated) initMouseMode();
 
@@ -1624,9 +1347,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (apeS != null) apeS.updateAnimation();
 
         // if no apes alive, trigger next UFO
-        if (!ufoActive && activeApes.size() == 0)
+        if (!ufoWaveManager.isActive() && activeApes.size() == 0)
         {
-            startNextWave();
+            ufoWaveManager.startNextWave();
         }
 
         updateStaticObjectsToTerrain();
@@ -1642,7 +1365,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
 	Vector3f playerpos = player.getWorldLocation();
 
-	handlePickupCollisions(dt);
+	pickupManager.handleCollisions(dt, player, weaponInventory, gameAudio);
 
 	float vx = 0.0f;
 	float vz = 0.0f;
@@ -1668,47 +1391,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 	wasMoving = isMoving;
 	prevPlayerPos.set(playerpos);
 
-        camOver.setLocation(new Vector3f(playerpos.x + ohPanX, ohHeight, playerpos.z + ohPanZ));
-        camOver.setU(new Vector3f(1, 0, 0));
-        camOver.setV(new Vector3f(0, 0, -1));
-        camOver.setN(new Vector3f(0, -1, 0));
+        overheadCameraController.applyTo(camOver, playerpos);
 
         engine.getHUDmanager().setHUD1("Health: " + pHealth, new Vector3f(0, 1, 0), 15, 660);
-        engine.getHUDmanager().setHUD2(getWeaponHudText(), new Vector3f(1, 1, 1), 15, 630);
+        engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
         engine.getHUDmanager().setHUD3(
             String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
             new Vector3f(1, 1, 1), 15, 15
         );
 
-        ammoBobTime += dt;
-        float bobOffset = (float)java.lang.Math.sin(ammoBobTime * 2.0f) * 0.25f;
-        for (int i = 0; i < ammoPickups.length; i++)
-        {
-            float terrainY = terr.getHeight(ammoSpawnPositions[i].x, ammoSpawnPositions[i].z);
-            ammoPickups[i].setLocalTranslation(new Matrix4f().translation(
-                ammoSpawnPositions[i].x,
-                terrainY + 0.75f + bobOffset,
-                ammoSpawnPositions[i].z));
-        }
-
-        healthSpin += dt * 45.0f;
-        for (int i = 0; i < healthPickups.length; i++)
-        {
-            float terrainY = terr.getHeight(healthSpawnPositions[i].x, healthSpawnPositions[i].z);
-            healthPickups[i].setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(healthSpin)));
-            healthPickups[i].setLocalTranslation(new Matrix4f().translation(
-                healthSpawnPositions[i].x,
-                terrainY + 0.75f,
-                healthSpawnPositions[i].z));
-        }
-
-        for (int i = 0; i < ammoPickups.length; i++)
-            if (ammoPickups[i] != null && ammoLights[i] != null)
-                ammoLights[i].setLocation(ammoPickups[i].getWorldLocation());
-
-        for (int i = 0; i < healthPickups.length; i++)
-            if (healthPickups[i] != null && healthLights[i] != null)
-                healthLights[i].setLocation(healthPickups[i].getWorldLocation());
+        pickupManager.update(dt, terr);
     }
 
     @Override
@@ -1765,8 +1457,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             isShuttingDown = true;
                             mouseModeInitiated = false;
                             isRecentering = false;
-                            if (hPsound != null && audioMgr != null) hPsound.release(audioMgr);
-                            if (aPsound != null && audioMgr != null) aPsound.release(audioMgr);
+                            gameAudio.releaseAll();
                             shutdown();
                             System.exit(0);
                             return;
@@ -1789,7 +1480,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
                     break;
                 case KeyEvent.VK_R:
-                    beginReload();
+                    weaponInventory.beginReload();
                     break;
                 case KeyEvent.VK_BACK_SLASH:
                     restartGame = new RestartGame(this);
@@ -1841,9 +1532,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public void mouseWheelMoved(MouseWheelEvent e)
     {
         int clicks = e.getWheelRotation();
-        if (clicks > 0) currentWeaponIndex = (currentWeaponIndex + 1) % 5;
-        else if (clicks < 0) currentWeaponIndex = (currentWeaponIndex + 4) % 5;
-        cancelReload();
+        if (clicks > 0) weaponInventory.selectNext();
+        else if (clicks < 0) weaponInventory.selectPrevious();
         updateWeaponVisibility();
     }
 
@@ -1853,25 +1543,25 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (gameState != GameState.PLAYING) return;
         if (e.getButton() != MouseEvent.BUTTON1) return;
 
-        if (!weaponUsesBullets()) return;
-        if (isReloading) return;
-        if (currentWeaponIndex == WEAPON_SHOTGUN && isShotgunPumping()) return;
+        if (!weaponInventory.currentUsesBullets()) return;
+        if (weaponInventory.isReloading()) return;
+        if (weaponInventory.getCurrentWeapon() == WeaponType.SHOTGUN && isShotgunPumping()) return;
 
-        if (getCurrentMagazineAmmo() <= 0)
+        if (weaponInventory.getCurrentMagazineAmmo() <= 0)
         {
-            beginReload();
+            weaponInventory.beginReload();
             return;
         }
 
-        if (isAutomaticWeapon())
+        if (weaponInventory.isAutomaticWeapon())
         {
             isFiring = true;
-            if (fireCooldown <= 0.0f)
+            if (!weaponInventory.isCoolingDown())
                 fireCurrentWeapon();
         }
         else
         {
-            if (fireCooldown <= 0.0f)
+            if (!weaponInventory.isCoolingDown())
                 fireCurrentWeapon();
         }
     }
@@ -1882,7 +1572,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (e.getButton() == MouseEvent.BUTTON1)
         {
             isFiring = false;
-            stopRifleLoopSound();
+            gameAudio.stopRifleLoopSound();
         }
     }
 
@@ -1895,243 +1585,35 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         handleMouseLook(e);
     }
 
-    private class OverheadZoomInAction extends AbstractInputAction
+    void toggleFirstPersonMode()
     {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
+        firstPersonMode = !firstPersonMode;
+    }
+
+    void togglePhysicsDebug()
+    {
+        physicsDebug = !physicsDebug;
+
+        if (physicsDebug)
         {
-            ohHeight -= 1.0f;
-            if (ohHeight < ohMinH) ohHeight = ohMinH;
+            engine.enablePhysicsWorldRender();
+            System.out.println("Physics Debug ON");
+        }
+        else
+        {
+            engine.disablePhysicsWorldRender();
+            System.out.println("Physics Debug OFF");
         }
     }
 
-    private class OverheadZoomOutAction extends AbstractInputAction
+    void togglePlasmaFireMode()
     {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
+        if (weaponInventory.togglePlasmaFireMode())
         {
-            ohHeight += 1.0f;
-            if (ohHeight > ohMaxH) ohHeight = ohMaxH;
+            System.out.println("Plasma Rifle Mode: " + (weaponInventory.isPlasmaBurstMode() ? "BURST" : "FULL AUTO"));
         }
     }
 
-    private class ElevationUp extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            orbitCam.addElevation(2.0f);
-        }
-    }
-
-    private class ElevationDown extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            orbitCam.addElevation(-2.0f);
-        }
-    }
-
-    private class OhPUA extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            ohPanZ += ohPanStep;
-        }
-    }
-
-    private class OhPDA extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            ohPanZ -= ohPanStep;
-        }
-    }
-
-    private class OhPLA extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            ohPanX -= ohPanStep;
-        }
-    }
-
-    private class OhPRA extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            ohPanX += ohPanStep;
-        }
-    }
-
-    private class OhRecenter extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            ohPanX = 0.0f;
-            ohPanZ = 0.0f;
-        }
-    }
-
-    private class ToggleFirstPersonAction extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            firstPersonMode = !firstPersonMode;
-        }
-    }
-
-    private class TogglePhysicsDebugAction extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            physicsDebug = !physicsDebug;
-
-            if (physicsDebug)
-            {
-                engine.enablePhysicsWorldRender();
-                System.out.println("Physics Debug ON");
-            }
-            else
-            {
-                engine.disablePhysicsWorldRender();
-                System.out.println("Physics Debug OFF");
-            }
-        }
-    }
-
-    private class TogglePlasmaFireModeAction extends AbstractInputAction
-    {
-        @Override
-        public void performAction(float time, net.java.games.input.Event e)
-        {
-            if (currentWeaponIndex == 2)
-            {
-                plasmaBurstMode = !plasmaBurstMode;
-                System.out.println("Plasma Rifle Mode: " + (plasmaBurstMode ? "BURST" : "FULL AUTO"));
-            }
-        }
-    }
-
-
-    
-    public void setPlayerHealth(int value)
-    {
-        pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
-    }
-
-    public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
-    public int getPlayerHealth() { return pHealth; }
-    public int getPlayerAmmo() { return getCurrentMagazineAmmo() + getCurrentReserveAmmo(); }
-
-    private void resetWeaponAmmoState()
-    {
-        for (int i = 0; i < weaponMagazineAmmo.length; i++)
-        {
-            weaponMagazineAmmo[i] = weaponMagazineCapacity[i];
-            weaponReserveAmmo[i] = weaponInitialReserve[i];
-        }
-    }
-
-    private void addAmmoToWeaponReserve(int weaponIndex, int amount)
-    {
-        if (!isGunWeapon(weaponIndex) || amount <= 0) return;
-        weaponReserveAmmo[weaponIndex] = java.lang.Math.min(
-            weaponReserveCapacity[weaponIndex],
-            weaponReserveAmmo[weaponIndex] + amount
-        );
-    }
-
-    private void addAmmoPickupBundle()
-    {
-        for (int weaponIndex = WEAPON_PISTOL; weaponIndex <= WEAPON_SHOTGUN; weaponIndex++)
-            addAmmoToWeaponReserve(weaponIndex, weaponPickupAmount[weaponIndex]);
-    }
-
-    private void hideAmmoPickup(int index)
-    {
-        ammoActive[index] = false;
-        ammoRespawnTimers[index] = pickupRespawnTime;
-        if (ammoPickups[index] != null)
-            ammoPickups[index].setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
-    }
-
-    private void showAmmoPickup(int index)
-    {
-        ammoActive[index] = true;
-        if (ammoPickups[index] != null)
-            ammoPickups[index].setLocalScale(new Matrix4f().scaling(ammoScale));
-    }
-
-    private void hideHealthPickup(int index)
-    {
-        healthActive[index] = false;
-        healthRespawnTimers[index] = pickupRespawnTime;
-        if (healthPickups[index] != null)
-            healthPickups[index].setLocalScale(new Matrix4f().scaling(hiddenPickupScale));
-    }
-
-    private void showHealthPickup(int index)
-    {
-        healthActive[index] = true;
-        if (healthPickups[index] != null)
-            healthPickups[index].setLocalScale(new Matrix4f().scaling(healthScale));
-    }
-
-    private void handlePickupCollisions(float dt)
-    {
-        if (player == null) return;
-
-        Vector3f playerPos = player.getWorldLocation();
-
-        for (int i = 0; i < ammoPickups.length; i++)
-        {
-            if (!ammoActive[i])
-            {
-                ammoRespawnTimers[i] -= dt;
-                if (ammoRespawnTimers[i] <= 0.0f)
-                {
-                    ammoRespawnTimers[i] = 0.0f;
-                    showAmmoPickup(i);
-                }
-            }
-
-            if (ammoActive[i] && ammoPickups[i] != null && playerPos.distance(ammoPickups[i].getWorldLocation()) <= pickupCollisionRange)
-            {
-                addAmmoPickupBundle();
-                hideAmmoPickup(i);
-                if (aPsound != null) aPsound.play();
-            }
-        }
-
-        for (int i = 0; i < healthPickups.length; i++)
-        {
-            if (!healthActive[i])
-            {
-                healthRespawnTimers[i] -= dt;
-                if (healthRespawnTimers[i] <= 0.0f)
-                {
-                    healthRespawnTimers[i] = 0.0f;
-                    showHealthPickup(i);
-                }
-            }
-
-            if (healthActive[i] && healthPickups[i] != null && playerPos.distance(healthPickups[i].getWorldLocation()) <= pickupCollisionRange)
-            {
-                setPlayerHealth(pHealthMax);
-                hideHealthPickup(i);
-                if (hPsound != null) hPsound.play();
-            }
-        }
-    }
 
     public boolean canMoveOnTerrain(Vector3f from, Vector3f to)
     {
@@ -2162,196 +1644,65 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (dir.lengthSquared() < 0.000001f) return;
         dir.normalize();
 
-        float[] newVel = { dir.x * speed, 0f, dir.z * speed };
-        playerP.setLinearVelocity(newVel);
+        currentMoveDir.add(dir);
+        currentMoveSpeed = speed;
     }
 
-    public void stopPlayerHorizontalMotion()
+
+    private void fireCurrentWeapon()
     {
-        if (playerP == null) return;
-        playerP.setLinearVelocity(new float[] { 0f, 0f, 0f });
-    }
+        if (!weaponInventory.currentUsesBullets()) return;
+        if (weaponInventory.isReloading()) return;
 
-private boolean isGunWeapon(int weaponIndex)
-{
-    return weaponIndex >= WEAPON_PISTOL && weaponIndex <= WEAPON_SHOTGUN;
-}
+        if (weaponInventory.getCurrentMagazineAmmo() <= 0)
+        {
+            weaponInventory.beginReload();
+            return;
+        }
 
-private boolean weaponUsesBullets()
-{
-    return isGunWeapon(currentWeaponIndex);
-}
+        WeaponType currentWeapon = weaponInventory.getCurrentWeapon();
+        if (currentWeapon == WeaponType.SHOTGUN && isShotgunPumping()) return;
 
-private boolean isAutomaticWeapon()
-{
-    if (currentWeaponIndex == WEAPON_RIFLE) return true;
-    if (currentWeaponIndex == WEAPON_PLASMA && !plasmaBurstMode) return true;
-    return false;
-}
-
-private int getCurrentMagazineAmmo()
-{
-    return weaponUsesBullets() ? weaponMagazineAmmo[currentWeaponIndex] : 0;
-}
-
-private int getCurrentReserveAmmo()
-{
-    return weaponUsesBullets() ? weaponReserveAmmo[currentWeaponIndex] : 0;
-}
-
-private String getWeaponName(int weaponIndex)
-{
-    switch (weaponIndex)
-    {
-        case WEAPON_KNIFE: return "Knife";
-        case WEAPON_PISTOL: return "Pistol";
-        case WEAPON_PLASMA: return "Plasma Rifle";
-        case WEAPON_RIFLE: return "Machine Gun";
-        case WEAPON_SHOTGUN: return "Shotgun";
-        default: return "Unknown";
-    }
-}
-
-private String getWeaponHudText()
-{
-    if (!weaponUsesBullets())
-        return "Weapon: " + getWeaponName(currentWeaponIndex);
-
-    String status = isReloading ? "  Reloading..." : "";
-    String modeText = "";
-
-    if (currentWeaponIndex == WEAPON_PLASMA)
-        modeText = plasmaBurstMode ? "  [BURST]" : "  [AUTO]";
-
-    return getWeaponName(currentWeaponIndex) + " Ammo: " +
-        getCurrentMagazineAmmo() + "/" + getCurrentReserveAmmo() + modeText + status;
-}
-
-private float getReloadTime(int weaponIndex)
-{
-    switch (weaponIndex)
-    {
-        case WEAPON_PISTOL: return pistolReloadTime;
-        case WEAPON_PLASMA: return plasmaReloadTime;
-        case WEAPON_RIFLE: return rifleReloadTime;
-        case WEAPON_SHOTGUN: return shotgunReloadTime;
-        default: return 0.0f;
-    }
-}
-
-private float getCurrentFireDelay()
-{
-    switch (currentWeaponIndex)
-    {
-        case WEAPON_PISTOL: return pistolFireDelay;
-        case WEAPON_PLASMA: return plasmaFireDelay;
-        case WEAPON_RIFLE: return rifleFireDelay;
-        case WEAPON_SHOTGUN: return shotgunFireDelay;
-        default: return 999f;
-    }
-}
-
-private void beginReload()
-{
-    if (!weaponUsesBullets()) return;
-    if (isReloading && reloadingWeaponIndex == currentWeaponIndex) return;
-    if (weaponMagazineAmmo[currentWeaponIndex] >= weaponMagazineCapacity[currentWeaponIndex]) return;
-    if (weaponReserveAmmo[currentWeaponIndex] <= 0) return;
-
-    isReloading = true;
-    reloadingWeaponIndex = currentWeaponIndex;
-    reloadTimer = getReloadTime(currentWeaponIndex);
-    isFiring = false;
-}
-
-private void finishReload()
-{
-    if (!isGunWeapon(reloadingWeaponIndex))
-    {
-        cancelReload();
-        return;
-    }
-
-    int weaponIndex = reloadingWeaponIndex;
-    int ammoNeeded = weaponMagazineCapacity[weaponIndex] - weaponMagazineAmmo[weaponIndex];
-    int ammoToLoad = java.lang.Math.min(ammoNeeded, weaponReserveAmmo[weaponIndex]);
-
-    weaponMagazineAmmo[weaponIndex] += ammoToLoad;
-    weaponReserveAmmo[weaponIndex] -= ammoToLoad;
-
-    isReloading = false;
-    reloadingWeaponIndex = -1;
-    reloadTimer = 0.0f;
-}
-
-private void cancelReload()
-{
-    isReloading = false;
-    reloadingWeaponIndex = -1;
-    reloadTimer = 0.0f;
-}
-
-private void consumeCurrentMagazineRound()
-{
-    if (!weaponUsesBullets()) return;
-    weaponMagazineAmmo[currentWeaponIndex] =
-        java.lang.Math.max(0, weaponMagazineAmmo[currentWeaponIndex] - 1);
-}
-
-private void fireCurrentWeapon()
-{
-    if (!weaponUsesBullets()) return;
-    if (isReloading) return;
-    if (getCurrentMagazineAmmo() <= 0)
-    {
-        beginReload();
-        return;
-    }
-    if (currentWeaponIndex == WEAPON_SHOTGUN && isShotgunPumping()) return;
-
-    Vector3f forward = new Vector3f(cam.getN()).normalize();
-    Vector3f playerPos = player.getWorldLocation();
-
+        Vector3f forward = new Vector3f(cam.getN()).normalize();
+        Vector3f playerPos = player.getWorldLocation();
         Vector3f spawnPos = new Vector3f(playerPos)
             .add(0.0f, 1.5f, 0.0f)
             .add(new Vector3f(forward).mul(1.5f));
 
-        switch (currentWeaponIndex)
+        switch (currentWeapon)
         {
-            case WEAPON_PISTOL:
-                spawnPlayerBullet(spawnPos, forward, false);
-                consumeCurrentMagazineRound();
-                if (pistolShotSound != null)
-                    pistolShotSound.play();
+            case PISTOL:
+                bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+                weaponInventory.consumeCurrentRound();
+                gameAudio.playPistolShot();
                 break;
 
-            case WEAPON_PLASMA:
-                if (plasmaBurstMode)
+            case PLASMA_RIFLE:
+                if (weaponInventory.isPlasmaBurstMode())
                 {
-                    int burstCount = java.lang.Math.min(3, getCurrentMagazineAmmo());
+                    int burstCount = java.lang.Math.min(3, weaponInventory.getCurrentMagazineAmmo());
                     for (int i = 0; i < burstCount; i++)
                     {
-                        spawnPlayerBullet(spawnPos, forward, true);
-                        consumeCurrentMagazineRound();
+                    bulletManager.spawnPlayerBullet(spawnPos, forward, true);
+                        weaponInventory.consumeCurrentRound();
                     }
                 }
                 else
                 {
-                    spawnPlayerBullet(spawnPos, forward, true);
-                    consumeCurrentMagazineRound();
+                bulletManager.spawnPlayerBullet(spawnPos, forward, true);
+                    weaponInventory.consumeCurrentRound();
                 }
 
-                if (plasmaRifleSound != null)
-                    plasmaRifleSound.play();
+                gameAudio.playPlasmaRifle();
                 break;
 
-            case WEAPON_RIFLE:
-                spawnPlayerBullet(spawnPos, forward, false);
-                consumeCurrentMagazineRound();
-                playRifleLoopSound();
+            case RIFLE:
+                bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+                weaponInventory.consumeCurrentRound();
+                gameAudio.playRifleLoopSound();
                 break;
 
-            case WEAPON_SHOTGUN:
+            case SHOTGUN:
                 for (int i = 0; i < shotgunPelletCount; i++)
                 {
                     Vector3f spreadDir = new Vector3f(forward).add(
@@ -2360,226 +1711,57 @@ private void fireCurrentWeapon()
                         ((float)Math.random() - 0.5f) * shotgunSpread
                     ).normalize();
 
-                    spawnPlayerBullet(spawnPos, spreadDir, false);
+                bulletManager.spawnPlayerBullet(spawnPos, spreadDir, false);
                 }
-                consumeCurrentMagazineRound();
+                weaponInventory.consumeCurrentRound();
 
-                if (shotgunShotSound != null)
-                    shotgunShotSound.play();
-
-                shotgunPumpTimer = shotgunFireDelay;
+                gameAudio.playShotgunShot();
+                gameAudio.startShotgunPump(WeaponType.SHOTGUN.getFireDelay());
                 break;
+
+            default:
+                return;
         }
-        fireCooldown = getCurrentFireDelay();
+
+        weaponInventory.startFireCooldown();
     }
 
-    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy)
+    public void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
     {
-        GameObject bullet = new GameObject(
-            GameObject.root(),
-            bulletSphereS,
-            isPlasma ? bulletBlueTx : bulletYellowTx
-        );
-
-        float scale = isPlasma ? plasmaRadius : bulletRadius;
-        bullet.setLocalTranslation(new Matrix4f().translation(spawnPos.x, spawnPos.y, spawnPos.z));
-        bullet.setLocalScale(new Matrix4f().scaling(scale));
-
-        Quaternionf rot = new Quaternionf();
-        PhysicsObject bulletP = engine.getSceneGraph().addPhysicsSphere(
-            isPlasma ? 2.0f : 1.0f,
-            spawnPos,
-            rot,
-            scale
-        );
-
-        bulletP.setBounciness(0.0f);
-        bulletP.setFriction(0.2f);
-        bulletP.setDamping(0.0f, 0.0f);
-        bulletP.setGravity(new float[] { 0f, worldGravity * bulletGravityScale, 0f });
-        bulletP.disableSleeping();
-
-        float speed = isPlasma ? plasmaSpeed : bulletSpeed;
-        Vector3f velocity = new Vector3f(dir).mul(speed);
-        bulletP.setLinearVelocity(new float[] { velocity.x, velocity.y, velocity.z });
-        bullet.setPhysicsObject(bulletP);
-
-        activeBullets.add(bullet);
-        activeBulletPhysics.add(bulletP);
-        activeBulletVelocities.add(velocity);
-        activeBulletLifetimes.add(bulletLifeMax);
-        activeBulletIsPlasma.add(isPlasma);
-        activeBulletFromEnemy.add(fromEnemy);
-    }
-   
-    private void spawnPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
-    {
-        spawnBullet(spawnPos, dir, isPlasma, false);
+        bulletManager.spawnEnemyBullet(spawnPos, dir, isPlasma);
     }
 
-    private void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
+    public boolean checkAndDamageApe(Vector3f loc)
     {
-        spawnBullet(spawnPos, dir, isPlasma, true);
-    }
-
-    private void updateBullets(float dt)
-    {
-        for (int i = activeBullets.size() - 1; i >= 0; i--)
+        for (int j = activeApes.size() - 1; j >= 0; j--)
         {
-            GameObject bullet = activeBullets.get(i);
-            PhysicsObject bulletP = activeBulletPhysics.get(i);
+            GameObject ape = activeApes.get(j);
+            Vector3f apePos = ape.getWorldLocation();
 
-            if (bullet == null || bulletP == null)
+            if (loc.distance(apePos) < 1.0f)
             {
-                removeBullet(i);
-                continue;
-            }
-
-            Vector3f loc = bulletP.getLocation();
-            bullet.setLocalTranslation(new Matrix4f().translation(loc.x, loc.y, loc.z));
-
-            boolean fromEnemy = activeBulletFromEnemy.get(i);
-            boolean bulletRemoved = false;
-
-            if (fromEnemy)
-            {
-                if (player != null)
+                if (!activeApeDead.get(j))
                 {
-                    Vector3f playerPos = player.getWorldLocation();
+                    int hp = activeApeHealth.get(j) - 100;
+                    activeApeHealth.set(j, hp);
 
-                    if (loc.distance(playerPos) < 1.0f)
+                    if (hp <= 0)
                     {
-                        addPlayerHealth(-10);
-                        removeBullet(i);
-                        bulletRemoved = true;
-                    }
-                }
-            }
-            else
-            {
-                for (int j = activeApes.size() - 1; j >= 0; j--)
-                {
-                    GameObject ape = activeApes.get(j);
-                    Vector3f apePos = ape.getWorldLocation();
+                        activeApeDead.set(j, true);
+                        activeApeDeathTimers.set(j, 2.0f);
 
-                    if (loc.distance(apePos) < 1.0f)
-                    {
-                        if (!activeApeDead.get(j))
+                        PhysicsObject apeP = activeApePhysics.get(j);
+                        if (apeP != null)
                         {
-                            int hp = activeApeHealth.get(j) - 100;
-                            activeApeHealth.set(j, hp);
-
-                            removeBullet(i);
-                            bulletRemoved = true;
-
-                            if (hp <= 0)
-                            {
-                                activeApeDead.set(j, true);
-                                activeApeDeathTimers.set(j, 2.0f);
-
-                                PhysicsObject apeP = activeApePhysics.get(j);
-                                if (apeP != null)
-                                {
-                                    apeP.setAngularFactor(1f);
-                                    apeP.applyTorque(0.0f, 0.0f, 35.0f);
-                                }
-                            }
+                            apeP.setAngularFactor(1f);
+                            apeP.applyTorque(0.0f, 0.0f, 35.0f);
                         }
-                        break;
                     }
+                    return true;
                 }
             }
-
-            if (bulletRemoved)
-                continue;
-
-            float life = activeBulletLifetimes.get(i) - dt;
-            activeBulletLifetimes.set(i, life);
-
-            if (life <= 0.0f || loc.y < -10.0f)
-            {
-                removeBullet(i);
-            }
         }
-    }
-
-    private void removeBullet(int index)
-    {
-        GameObject bullet = activeBullets.get(index);
-        PhysicsObject bulletP = activeBulletPhysics.get(index);
-
-        if (bullet != null)
-            bullet.setLocalScale(new Matrix4f().scaling(0.0001f));
-
-        if (bulletP != null)
-            physicsEngine.removeObject(bulletP.getUID());
-
-        activeBullets.remove(index);
-        activeBulletPhysics.remove(index);
-        activeBulletVelocities.remove(index);
-        activeBulletLifetimes.remove(index);
-        activeBulletIsPlasma.remove(index);
-        activeBulletFromEnemy.remove(index);
-    }
-
-    private void startNextWave()
-    {
-        if (currentWave < 8)
-        {
-            spawnUfoWave(ufoDropPositions[currentWave], 5);
-        }
-        else if (currentWave == 8)
-        {
-            spawnUfoWave(largeUfoDropPosition, 10);
-        }
-
-        currentWave++;
-    }
-
-    private void spawnUfoWave(Vector3f pos, int apeCount)
-    {
-        ufoActive = true;
-        waveDropFinished = false;
-        activeUfoTarget.set(pos);
-        activeUfoTravelTime = 0.0f;
-        activeUfoDropCount = apeCount;
-
-        activeUfoIsLarge = (apeCount == 10);
-
-        if (activeUfoIsLarge)
-            activeUfo = largeUfo;
-        else
-            activeUfo = ufos[currentWave];
-
-        activeUfoStart.set(getUfoStartPosition(pos));
-        activeUfo.setLocalTranslation(new Matrix4f().translation(activeUfoStart));
-    }
-
-    private void updateActiveUfo(float dt)
-    {
-        if (!ufoActive || activeUfo == null || waveDropFinished) return;
-
-        activeUfoTravelTime += dt;
-        float t = activeUfoTravelTime / activeUfoTravelDuration;
-        if (t > 1.0f) t = 1.0f;
-
-        Vector3f pos = new Vector3f(
-            activeUfoStart.x + (activeUfoTarget.x - activeUfoStart.x) * t,
-            activeUfoStart.y + (activeUfoTarget.y + 18.0f - activeUfoStart.y) * t,
-            activeUfoStart.z + (activeUfoTarget.z - activeUfoStart.z) * t
-        );
-
-        float zigzag = (float)Math.sin(t * 8.0f * Math.PI) * 8.0f;
-        pos.x += zigzag;
-
-        activeUfo.setLocalTranslation(new Matrix4f().translation(pos));
-
-        if (t >= 1.0f)
-        {
-            dropApesFromUfo(activeUfoTarget, activeUfoDropCount);
-            waveDropFinished = true;
-            ufoActive = false;
-        }
+        return false;
     }
 
     private void updateApesFromPhysics()
@@ -2600,39 +1782,6 @@ private void fireCurrentWeapon()
                     .rotationX((float)Math.toRadians(90.0f))
                     .rotateZ((float)Math.toRadians(180.0f))
             );
-        }
-    }
-
-    private void dropApesFromUfo(Vector3f dropPos, int apeCount)
-    {
-        for (int i = 0; i < apeCount; i++)
-        {
-            float offsetX = ((float)Math.random() - 0.5f) * 8.0f;
-            float offsetZ = ((float)Math.random() - 0.5f) * 8.0f;
-
-            Vector3f apeDrop = new Vector3f(
-                dropPos.x + offsetX,
-                dropPos.y,
-                dropPos.z + offsetZ
-            );
-
-            spawnApe(apeDrop);
-        }
-    }
-
-    private void playRifleLoopSound()
-    {
-        if (rifleShotSound != null && !rifleShotSound.getIsPlaying())
-        {
-            rifleShotSound.play();
-        }
-    }
-
-    private void stopRifleLoopSound()
-    {
-        if (rifleShotSound != null && rifleShotSound.getIsPlaying())
-        {
-            rifleShotSound.stop();
         }
     }
 
@@ -2661,4 +1810,40 @@ private void fireCurrentWeapon()
                 break;
         }
     }
+
+    // ========================================================
+    // GETTERS & SETTERS
+    // ========================================================
+
+    // --- Engine & Core ---
+    public Engine getEngine() { return engine; }
+    public Camera getCamera() { return cam; }
+
+    // --- Game State & Flow ---
+    public void setGameState(String state) { gameState = GameState.valueOf(state); }
+    public void setMapSelection(int selection) { mapSelection = selection; }
+
+    // --- Player Stats & Info ---
+    public GameObject getAvatar() { return player; }
+    public float getPlayerScale() { return playerScale; }
+    public Vector3f getPlayerPosition()
+    {
+        if (player == null) return new Vector3f(0, 0, 0);
+        return player.getWorldLocation();
+    }
+    public void setPlayerHealth(int value)
+    {
+        pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
+    }
+    public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
+    public int getPlayerHealth() { return pHealth; }
+    public int getPlayerHealthMax() { return pHealthMax; }
+    public int getPlayerAmmo() { return weaponInventory.getTotalAmmo(); }
+
+    // --- Networking & Multiplayer ---
+    public ProtocolClient getProtocolClient() { return protClient; }
+    public void setIsConnected(boolean value) { isClientConnected = value; }
+    public GhostManager getGhostManager() { return gm; }
+    public ObjShape getGhostShape() { return ghostS; }
+    public TextureImage getGhostTexture() { return ghostT; }
 }
