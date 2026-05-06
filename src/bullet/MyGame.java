@@ -20,6 +20,9 @@ import tage.networking.IGameConnection.ProtocolType;
 import tage.physics.PhysicsEngine;
 import tage.physics.PhysicsObject;
 
+// behavior tree imports
+import tage.ai.behaviortrees.*;
+
 public class MyGame extends VariableFrameRateGame implements MouseMotionListener, MouseListener
 {
     private static Engine engine;
@@ -108,7 +111,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private tage.audio.Sound shotgunShotSound;
     private tage.audio.Sound shotgunPumpSound;
 
-    private boolean rifleSoundPlaying = false;
+    //3d Sound
+    private tage.audio.Sound apePlasmaSound;
+
     private float shotgunPumpTimer = 0.0f;
     private final float shotgunPumpDelay = 0.35f;
 
@@ -271,6 +276,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Float> activeApeThinkTimers = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeApeFireCooldowns = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeApeStrafeDirs = new java.util.ArrayList<>();
+    private java.util.ArrayList<BehaviorTree> activeApeTrees = new java.util.ArrayList<>();
+
+    private float apeThinkTimer = 0.0f;
+    private final float apeThinkInterval = 0.25f;
 
     // ape bullets
     private java.util.ArrayList<Boolean> activeBulletFromEnemy = new java.util.ArrayList<>();
@@ -584,6 +593,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         newApe.setLocalTranslation(new Matrix4f().translation(
             spawnPos.x, spawnPos.y, spawnPos.z));
 
+        GameObject newApeGun = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+        newApeGun.setLocalTranslation(new Matrix4f().translation(-0.05f, 1.5f, 0.7f));
+        newApeGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f)));
+        newApeGun.setLocalScale(new Matrix4f().scaling(0.5f));
+
+        newApeGun.setParent(newApe);
+        newApeGun.propagateTranslation(true);
+        newApeGun.propagateRotation(true);
+        newApeGun.propagateScale(true);
+        newApeGun.applyParentRotationToPosition(true);
+
         // physics capsule for ape
         Quaternionf rot = new Quaternionf();
         PhysicsObject apeP = engine.getSceneGraph().addPhysicsCapsule(
@@ -611,6 +631,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApeThinkTimers.add(0.0f);
         activeApeFireCooldowns.add((float)(Math.random() * 1.5f));
         activeApeStrafeDirs.add(Math.random() < 0.5 ? -1.0f : 1.0f);
+        activeApeTrees.add(createApeBehaviorTree(newApe, apeP));
     }
 
     private Vector3f getUfoStartPosition(Vector3f target)
@@ -639,6 +660,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApeThinkTimers.remove(index);
         activeApeFireCooldowns.remove(index);
         activeApeStrafeDirs.remove(index);
+        activeApeTrees.remove(index);
     }
 
     private void updateDeadApes(float dt)
@@ -744,6 +766,234 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 fireCd = 1.25f;   // ape fire rate
             }
             activeApeFireCooldowns.set(i, fireCd);
+        }
+    }
+
+    private void updateApeBehaviorTrees(float dt)
+    {
+        apeThinkTimer += dt;
+
+        if (apeThinkTimer < apeThinkInterval)
+            return;
+
+        float thinkDt = apeThinkTimer;
+        apeThinkTimer = 0.0f;
+
+        for (int i = 0; i < activeApeTrees.size(); i++)
+        {
+            if (!activeApeDead.get(i))
+                activeApeTrees.get(i).update(thinkDt);
+        }
+    }
+
+    private BehaviorTree createApeBehaviorTree(GameObject apeObj, PhysicsObject apePhys)
+    {
+        BehaviorTree bt = new BehaviorTree(BTCompositeType.SEQUENCE);
+
+        bt.insertAtRoot(new PlayerAliveCondition());
+        bt.insertAtRoot(new ApeFacePlayerAction(apeObj, apePhys));
+        bt.insertAtRoot(new ApeMoveByDistanceAction(apeObj, apePhys));
+        bt.insertAtRoot(new ApeRandomStrafeAction(apeObj));
+        bt.insertAtRoot(new ApeFireAction(apeObj, apePhys));
+
+        return bt;
+    }
+
+    private int getApeIndex(GameObject apeObj)
+    {
+        return activeApes.indexOf(apeObj);
+    }
+
+    private class PlayerAliveCondition extends BTCondition
+    {
+        public PlayerAliveCondition()
+        {
+            super(false);
+        }
+
+        protected boolean check()
+        {
+            return player != null && pHealth > 0;
+        }
+    }
+
+    private class ApeFacePlayerAction extends BTAction
+    {
+        private GameObject apeObj;
+        private PhysicsObject apePhys;
+
+        public ApeFacePlayerAction(GameObject apeObj, PhysicsObject apePhys)
+        {
+            this.apeObj = apeObj;
+            this.apePhys = apePhys;
+        }
+
+        protected BTStatus update(float elapsedTime)
+        {
+            if (player == null || apeObj == null || apePhys == null)
+                return BTStatus.BH_FAILURE;
+
+            Vector3f playerPos = player.getWorldLocation();
+            Vector3f apePos = apePhys.getLocation();
+
+            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
+            if (toPlayer.length() < 0.001f)
+                return BTStatus.BH_FAILURE;
+
+            toPlayer.normalize();
+
+            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
+
+            return BTStatus.BH_SUCCESS;
+        }
+    }
+
+    private class ApeMoveByDistanceAction extends BTAction
+    {
+        private GameObject apeObj;
+        private PhysicsObject apePhys;
+
+        public ApeMoveByDistanceAction(GameObject apeObj, PhysicsObject apePhys)
+        {
+            this.apeObj = apeObj;
+            this.apePhys = apePhys;
+        }
+
+        protected BTStatus update(float elapsedTime)
+        {
+            int i = getApeIndex(apeObj);
+            if (i < 0 || player == null || apePhys == null)
+                return BTStatus.BH_FAILURE;
+
+            Vector3f playerPos = player.getWorldLocation();
+            Vector3f apePos = apePhys.getLocation();
+
+            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
+            float dist = toPlayer.length();
+
+            if (dist < 0.001f)
+                return BTStatus.BH_FAILURE;
+
+            toPlayer.normalize();
+
+            float preferredMin = 8.0f;
+            float preferredMax = 18.0f;
+            float moveSpeed = 3.0f;
+            float strafeDir = activeApeStrafeDirs.get(i);
+
+            Vector3f moveDir = new Vector3f();
+
+            if (dist > preferredMax)
+            {
+                moveDir.set(toPlayer.x, 0.0f, toPlayer.z);
+            }
+            else if (dist < preferredMin)
+            {
+                moveDir.set(-toPlayer.x, 0.0f, -toPlayer.z);
+            }
+            else
+            {
+                moveDir.set(-toPlayer.z * strafeDir, 0.0f, toPlayer.x * strafeDir);
+            }
+
+            if (moveDir.lengthSquared() > 0.0001f)
+            {
+                moveDir.normalize();
+
+                float[] vel = apePhys.getLinearVelocity();
+
+                apePhys.setLinearVelocity(new float[]
+                {
+                    moveDir.x * moveSpeed,
+                    vel[1],
+                    moveDir.z * moveSpeed
+                });
+            }
+
+            return BTStatus.BH_SUCCESS;
+        }
+    }
+
+    private class ApeRandomStrafeAction extends BTAction
+    {
+        private GameObject apeObj;
+
+        public ApeRandomStrafeAction(GameObject apeObj)
+        {
+            this.apeObj = apeObj;
+        }
+
+        protected BTStatus update(float elapsedTime)
+        {
+            int i = getApeIndex(apeObj);
+            if (i < 0)
+                return BTStatus.BH_FAILURE;
+
+            float think = activeApeThinkTimers.get(i) + elapsedTime;
+
+            if (think >= 1.0f)
+            {
+                think = 0.0f;
+
+                if (Math.random() < 0.25)
+                    activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
+            }
+
+            activeApeThinkTimers.set(i, think);
+
+            return BTStatus.BH_SUCCESS;
+        }
+    }
+
+    private class ApeFireAction extends BTAction
+    {
+        private GameObject apeObj;
+        private PhysicsObject apePhys;
+
+        public ApeFireAction(GameObject apeObj, PhysicsObject apePhys)
+        {
+            this.apeObj = apeObj;
+            this.apePhys = apePhys;
+        }
+
+        protected BTStatus update(float elapsedTime)
+        {
+            int i = getApeIndex(apeObj);
+            if (i < 0 || player == null || apePhys == null)
+                return BTStatus.BH_FAILURE;
+
+            Vector3f playerPos = player.getWorldLocation();
+            Vector3f apePos = apePhys.getLocation();
+
+            float dist = new Vector3f(playerPos).sub(apePos).length();
+
+            float fireCd = activeApeFireCooldowns.get(i) - elapsedTime;
+
+            if (fireCd <= 0.0f && dist <= 25.0f)
+            {
+                Vector3f fireDir = new Vector3f(playerPos)
+                    .add(0.0f, 1.0f, 0.0f)
+                    .sub(apePos.x, apePos.y + 1.5f, apePos.z)
+                    .normalize();
+
+                Vector3f muzzlePos = new Vector3f(apePos.x, apePos.y + 1.5f, apePos.z)
+                    .add(new Vector3f(fireDir).mul(1.2f));
+
+                spawnEnemyBullet(muzzlePos, fireDir, true);
+
+                if (apePlasmaSound != null)
+                {
+                    apePlasmaSound.setLocation(muzzlePos);
+                    apePlasmaSound.play();
+                }
+
+                fireCd = 1.25f;
+            }
+
+            activeApeFireCooldowns.set(i, fireCd);
+
+            return BTStatus.BH_SUCCESS;
         }
     }
 
@@ -1097,21 +1347,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             audioMgr.createAudioResource("ammoPickup.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
 
         tage.audio.AudioResource pistolRes =
-            audioMgr.createAudioResource("shoot.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+            audioMgr.createAudioResource("pistol.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource rifleRes =
-            audioMgr.createAudioResource("shoot.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+            audioMgr.createAudioResource("rifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource plasmaRes =
             audioMgr.createAudioResource("plasmaRifle.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource shotgunRes =
             audioMgr.createAudioResource("shotGun.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
         tage.audio.AudioResource pumpRes =
             audioMgr.createAudioResource("sgPump.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
+        tage.audio.AudioResource apePlasmaRes =
+            audioMgr.createAudioResource("apePlasma.wav", tage.audio.AudioResourceType.AUDIO_SAMPLE);
 
         hPsound = new tage.audio.Sound(healthRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         aPsound = new tage.audio.Sound(ammoRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
 
         pistolShotSound = new tage.audio.Sound(pistolRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
-        rifleShotSound = new tage.audio.Sound(rifleRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
+        rifleShotSound = new tage.audio.Sound(rifleRes, tage.audio.SoundType.SOUND_EFFECT, 75, true);
         plasmaRifleSound = new tage.audio.Sound(plasmaRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         shotgunShotSound = new tage.audio.Sound(shotgunRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
         shotgunPumpSound = new tage.audio.Sound(pumpRes, tage.audio.SoundType.SOUND_EFFECT, 75, false);
@@ -1124,29 +1376,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         plasmaRifleSound.initialize(audioMgr);
         shotgunShotSound.initialize(audioMgr);
         shotgunPumpSound.initialize(audioMgr);
+
+        apePlasmaSound = new tage.audio.Sound(apePlasmaRes, tage.audio.SoundType.SOUND_EFFECT, 100, false);
+        apePlasmaSound.initialize(audioMgr);
+
+        apePlasmaSound.setMaxDistance(35.0f);
+        apePlasmaSound.setMinDistance(1.0f);
+        apePlasmaSound.setRollOff(2.0f);
+    }
+
+    private void setEarParameters()
+    {
+        if (audioMgr == null || player == null || cam == null) return;
+
+        audioMgr.getEar().setLocation(player.getWorldLocation());
+
+        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+        audioMgr.getEar().setOrientation(forward, new Vector3f(0.0f, 1.0f, 0.0f));
     }
 
     private boolean isShotgunPumping()
     {
         return shotgunPumpTimer > 0.0f;
-    }
-
-    private void playRifleLoopSound()
-    {
-        if (rifleShotSound != null && !rifleSoundPlaying)
-        {
-            rifleShotSound.play();
-            rifleSoundPlaying = true;
-        }
-    }
-
-    private void stopRifleLoopSound()
-    {
-        if (rifleShotSound != null && rifleSoundPlaying)
-        {
-            rifleShotSound.stop();
-            rifleSoundPlaying = false;
-        }
     }
 
     private void updateWeaponAudio(float dt)
@@ -1165,9 +1416,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             if (shotgunPumpTimer < 0.0f)
                 shotgunPumpTimer = 0.0f;
         }
-
-        if (!(isFiring && currentWeaponIndex == 3 && fireCooldown > 0.0f))
-            stopRifleLoopSound();
     }
 
     @Override
@@ -1293,6 +1541,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         setupNetworking();
         initAudio();
+        setEarParameters();
     }
 
     @Override
@@ -1319,6 +1568,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         elapsTime += dt;
 
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
+        setEarParameters();
         im.update(dt);
 
         processNetworking(dt);
@@ -1351,7 +1601,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             syncGameObjectToPhysics(player);
         }
 
-        updateApeAI(dt);
+        updateApeBehaviorTrees(dt);
 
         updateApesFromPhysics();
         updateActiveUfo(dt);
@@ -1556,6 +1806,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     @Override
     public void mouseMoved(MouseEvent e)
     {
+        handleMouseLook(e);
+    }
+
+    private void handleMouseLook(MouseEvent e)
+    {
         if (isShuttingDown || !mouseModeInitiated || orbitCam == null) return;
 
         if (isRecentering && e.getXOnScreen() == (int)centerX && e.getYOnScreen() == (int)centerY)
@@ -1576,10 +1831,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         orbitCam.addAzimuth(xSensitivity);
         orbitCam.addElevation(ySensitivity);
 
-        prevMouseX = curMouseX;
-        prevMouseY = curMouseY;
-
         recenterMouse();
+
         prevMouseX = centerX;
         prevMouseY = centerY;
     }
@@ -1636,7 +1889,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     @Override public void mouseClicked(MouseEvent e) {}
     @Override public void mouseEntered(MouseEvent e) {}
     @Override public void mouseExited(MouseEvent e) {}
-    @Override public void mouseDragged(MouseEvent e) {}
+    @Override
+    public void mouseDragged(MouseEvent e)
+    {
+        handleMouseLook(e);
+    }
 
     private class OverheadZoomInAction extends AbstractInputAction
     {
@@ -1763,6 +2020,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             }
         }
     }
+
+
     
     public void setPlayerHealth(int value)
     {
@@ -2358,6 +2617,22 @@ private void fireCurrentWeapon()
             );
 
             spawnApe(apeDrop);
+        }
+    }
+
+    private void playRifleLoopSound()
+    {
+        if (rifleShotSound != null && !rifleShotSound.getIsPlaying())
+        {
+            rifleShotSound.play();
+        }
+    }
+
+    private void stopRifleLoopSound()
+    {
+        if (rifleShotSound != null && rifleShotSound.getIsPlaying())
+        {
+            rifleShotSound.stop();
         }
     }
 
