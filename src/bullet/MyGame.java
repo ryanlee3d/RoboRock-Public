@@ -73,6 +73,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private final int pHealthMin = 0;
     private final int pHealthMax = 150;
+    private int playerCredits = 0;
 
     private final WeaponInventory weaponInventory = new WeaponInventory();
 
@@ -1393,7 +1394,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         overheadCameraController.applyTo(camOver, playerpos);
 
-        engine.getHUDmanager().setHUD1("Health: " + pHealth, new Vector3f(0, 1, 0), 15, 660);
+        engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
         engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
         engine.getHUDmanager().setHUD3(
             String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
@@ -1648,6 +1649,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         currentMoveSpeed = speed;
     }
 
+    public void stopPlayerHorizontalMotion(){};
 
     private void fireCurrentWeapon()
     {
@@ -1756,6 +1758,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             apeP.setAngularFactor(1f);
                             apeP.applyTorque(0.0f, 0.0f, 35.0f);
                         }
+                        addPlayerCredits(new Random().nextInt(10)); // Reward for kill
                     }
                     return true;
                 }
@@ -1839,6 +1842,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public int getPlayerHealth() { return pHealth; }
     public int getPlayerHealthMax() { return pHealthMax; }
     public int getPlayerAmmo() { return weaponInventory.getTotalAmmo(); }
+    public void addPlayerCredits(int amount) { playerCredits += amount; }
+    public int getPlayerCredits() { return playerCredits; }
 
     // --- Networking & Multiplayer ---
     public ProtocolClient getProtocolClient() { return protClient; }
