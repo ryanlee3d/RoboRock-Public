@@ -1667,7 +1667,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         WeaponType currentWeapon = weaponInventory.getCurrentWeapon();
         if (currentWeapon == WeaponType.SHOTGUN && isShotgunPumping()) return;
 
-        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+        Vector3f forward = new Vector3f(cam.getN()).normalize();
         Vector3f playerPos = player.getWorldLocation();
         Vector3f spawnPos = new Vector3f(playerPos)
             .add(0.0f, 1.5f, 0.0f)
