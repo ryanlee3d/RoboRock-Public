@@ -161,6 +161,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Float> activeApeFireCooldowns = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeApeStrafeDirs = new java.util.ArrayList<>();
     private java.util.ArrayList<BehaviorTree> activeApeTrees = new java.util.ArrayList<>();
+    private java.util.ArrayList<PhysicsObject> buildingPhysics = new java.util.ArrayList<>();
 
     private float apeThinkTimer = 0.0f;
     private final float apeThinkInterval = 0.25f;
@@ -348,6 +349,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         go.setLocalRotation(rotMat);
     }
 
+    private void addBuildingBoxCollider(GameObject building, float width, float height, float depth)
+    {
+        if (building == null || physicsEngine == null) return;
+
+        Vector3f loc = building.getWorldLocation();
+        Quaternionf rot = new Quaternionf();
+        building.getWorldRotation().getNormalizedRotation(rot);
+
+        PhysicsObject p = engine.getSceneGraph().addPhysicsBox(
+            0.0f,
+            new Vector3f(loc.x, loc.y + height / 2.0f, loc.z),
+            rot,
+            new float[] { width, height, depth }
+        );
+
+        p.setFriction(1.0f);
+        p.setBounciness(0.0f);
+        p.disableSleeping();
+
+        buildingPhysics.add(p);
+    }
+
     private void updateWeaponVisibility()
     {
         WeaponType currentWeapon = weaponInventory.getCurrentWeapon();
@@ -382,6 +405,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (terr == null) return;
 
         if (centerBuilding != null) snapObjectToTerrain(centerBuilding, 0.0f);
+
 
         for (int i = 0; i < smallBuildings.length; i++)
             if (smallBuildings[i] != null) snapObjectToTerrain(smallBuildings[i], 0.0f);
@@ -1154,6 +1178,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		terrainP.setFriction(1.0f);
 		terrainP.disableSleeping();
 		terr.setPhysicsObject(terrainP);
+
+        addBuildingBoxCollider(centerBuilding, 18.0f, 18.0f, 18.0f);
+
+        for (int i = 0; i < smallBuildings.length; i++)
+            addBuildingBoxCollider(smallBuildings[i], 8.0f, 10.0f, 8.0f);
+
+        for (int i = 0; i < smallBuildings2.length; i++)
+            addBuildingBoxCollider(smallBuildings2[i], 12.0f, 12.0f, 12.0f);
 
         bulletManager.setPhysicsEngine(physicsEngine);
 
