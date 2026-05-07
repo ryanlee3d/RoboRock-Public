@@ -24,8 +24,8 @@ public class BulletManager {
     private final float bulletRadius = 0.02f; 
     private final float plasmaRadius = 0.30f;
     private final float bulletGravityScale = 0.01f;
-    private final float bulletSpeed = 8.00f;
-    private final float plasmaSpeed = 3.00f;
+    private final float bulletSpeed = 60.0f;
+    private final float plasmaSpeed = 35.0f;
     private final float worldGravity = -9.8f;
 
     public BulletManager(MyGame game) {
