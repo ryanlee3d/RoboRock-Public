@@ -134,7 +134,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private boolean isClientConnected = false;
 
     // skyboxes
-    private int spaceSkyBox, fluffySkyBox;
+    private int spaceSkyBox, islandSkyBox, lushSkyBox, plainsSkyBox;
 
     // map selection
     private int mapSelection = 0;
@@ -821,7 +821,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public void loadSkyBoxes()
     {
         spaceSkyBox = (engine.getSceneGraph()).loadCubeMap("blueSpace");
-        fluffySkyBox = (engine.getSceneGraph()).loadCubeMap("fluffyClouds");
+        islandSkyBox = (engine.getSceneGraph()).loadCubeMap("island");
+        lushSkyBox = (engine.getSceneGraph()).loadCubeMap("lush");
+        plainsSkyBox = (engine.getSceneGraph()).loadCubeMap("plains");
         (engine.getSceneGraph()).setSkyBoxEnabled(true);
     }
 
@@ -1797,7 +1799,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             case 0:
                 terr.setTextureImage(terrTxMap0);
                 terr.setHeightMap(heightMap0);
-                (engine.getSceneGraph()).setActiveSkyBoxTexture(fluffySkyBox);
+                (engine.getSceneGraph()).setActiveSkyBoxTexture(islandSkyBox);
                 terr.getRenderStates().setTileFactor(10);
                 break;
             case 1:
