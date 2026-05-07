@@ -151,6 +151,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean isFiring = false;
 
+    // plasma rifle burst fire control
+    private int plasmaBurstShotsRemaining = 0;
+    private float plasmaBurstTimer = 0.0f;
+    private final float plasmaBurstDelay = 0.08f;
+
     // apes
     private java.util.ArrayList<GameObject> activeApes = new java.util.ArrayList<>();
     private java.util.ArrayList<PhysicsObject> activeApePhysics = new java.util.ArrayList<>();
@@ -1367,6 +1372,37 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         bulletManager.update(dt);
 
+        
+        // handle plasma burst firing
+        if (plasmaBurstShotsRemaining > 0)
+        {
+            plasmaBurstTimer -= dt;
+
+            if (plasmaBurstTimer <= 0.0f)
+            {
+                Vector3f forward = new Vector3f(cam.getN()).normalize();
+
+                Vector3f spread = new Vector3f(
+                    ((float)Math.random() - 0.5f) * 0.05f,
+                    ((float)Math.random() - 0.5f) * 0.05f,
+                    ((float)Math.random() - 0.5f) * 0.05f
+                );
+
+                Vector3f dir = new Vector3f(forward).add(spread).normalize();
+
+                Vector3f spawnPos = new Vector3f(player.getWorldLocation())
+                    .add(0.0f, 1.5f, 0.0f)
+                    .add(new Vector3f(dir).mul(1.5f));
+
+                bulletManager.spawnPlayerBullet(spawnPos, dir, true);
+                weaponInventory.consumeCurrentRound();
+                gameAudio.playPlasmaRifle();
+
+                plasmaBurstShotsRemaining--;
+                plasmaBurstTimer = plasmaBurstDelay;
+            }
+        }
+
         if (!mouseModeInitiated) initMouseMode();
 
         if (firstPersonMode)
@@ -1716,20 +1752,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             case PLASMA_RIFLE:
                 if (weaponInventory.isPlasmaBurstMode())
                 {
-                    int burstCount = java.lang.Math.min(3, weaponInventory.getCurrentMagazineAmmo());
-                    for (int i = 0; i < burstCount; i++)
-                    {
-                    bulletManager.spawnPlayerBullet(spawnPos, forward, true);
-                        weaponInventory.consumeCurrentRound();
-                    }
+                    plasmaBurstShotsRemaining = Math.min(3, weaponInventory.getCurrentMagazineAmmo());
+                    plasmaBurstTimer = 0.0f;
                 }
                 else
                 {
-                bulletManager.spawnPlayerBullet(spawnPos, forward, true);
+                    bulletManager.spawnPlayerBullet(spawnPos, forward, true);
                     weaponInventory.consumeCurrentRound();
+                    gameAudio.playPlasmaRifle();
                 }
-
-                gameAudio.playPlasmaRifle();
                 break;
 
             case RIFLE:
