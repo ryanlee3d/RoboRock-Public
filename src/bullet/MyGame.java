@@ -167,6 +167,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Float> activeApeStrafeDirs = new java.util.ArrayList<>();
     private java.util.ArrayList<BehaviorTree> activeApeTrees = new java.util.ArrayList<>();
     private java.util.ArrayList<PhysicsObject> buildingPhysics = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeApeGuns = new java.util.ArrayList<>();
 
     private float apeThinkTimer = 0.0f;
     private final float apeThinkInterval = 0.25f;
@@ -443,6 +444,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         );
 
         GameObject newApe = new GameObject(GameObject.root(), apeS, apeTx);
+
         newApe.setLocalScale(new Matrix4f().scaling(0.01f));
         newApe.getRenderStates().setModelOrientationCorrection(
             new Matrix4f()
@@ -484,6 +486,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         newApe.setPhysicsObject(apeP);
 
         activeApes.add(newApe);
+        activeApeGuns.add(newApeGun);
         activeApePhysics.add(apeP);
         activeApeHealth.add(100); 
         activeApeDead.add(false);
@@ -498,6 +501,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         GameObject ape = activeApes.get(index);
         PhysicsObject apeP = activeApePhysics.get(index);
+        GameObject apeGun = activeApeGuns.get(index);
 
         if (ape != null)
             ape.setLocalScale(new Matrix4f().scaling(0.0001f));
@@ -505,7 +509,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (apeP != null)
             physicsEngine.removeObject(apeP.getUID());
 
+        if (apeGun != null)
+            apeGun.setLocalScale(new Matrix4f().scaling(0.0001f));
+
         activeApes.remove(index);
+        activeApeGuns.remove(index);
         activeApePhysics.remove(index);
         activeApeHealth.remove(index);
         activeApeDead.remove(index);
@@ -895,6 +903,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 apeS = new AnimatedShape("ape.rkm", "ape.rks");
                 apeS.loadAnimation("RUN", "apeRun.rka");
+                apeS.loadAnimation("DIE", "apeDie.rka");
 
                 smallBuildingS = new ImportedModel("smallBuilding.obj");
                 smallBuilding2S = new ImportedModel("smallBuilding2.obj");
@@ -1817,12 +1826,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                         activeApeDead.set(j, true);
                         activeApeDeathTimers.set(j, 2.0f);
 
+                        ape.setLocalRotation(new Matrix4f().rotationZ((float)Math.toRadians(90.0f)));
+
+                        GameObject apeGun = activeApeGuns.get(j);
+                        if (apeGun != null)
+                            apeGun.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                        gameAudio.playApeDie(ape.getWorldLocation());
+
                         PhysicsObject apeP = activeApePhysics.get(j);
                         if (apeP != null)
                         {
                             apeP.setAngularFactor(1f);
                             apeP.applyTorque(0.0f, 0.0f, 35.0f);
                         }
+
                         addPlayerCredits(new Random().nextInt(10)); // Reward for kill
                     }
                     return true;
@@ -1845,11 +1863,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             Matrix4f locMat = new Matrix4f().translation(loc.x, loc.y - 1.1f, loc.z);
             apeObj.setLocalTranslation(locMat);
 
-            apeObj.getRenderStates().setModelOrientationCorrection(
-                new Matrix4f()
-                    .rotationX((float)Math.toRadians(90.0f))
-                    .rotateZ((float)Math.toRadians(180.0f))
-            );
+            if (!activeApeDead.get(i))
+            {
+                apeObj.getRenderStates().setModelOrientationCorrection(
+                    new Matrix4f()
+                        .rotationX((float)Math.toRadians(90.0f))
+                        .rotateZ((float)Math.toRadians(180.0f))
+                );
+            }
+            else
+            {
+                apeObj.getRenderStates().setModelOrientationCorrection(
+                    new Matrix4f()
+                        .rotationX((float)Math.toRadians(90.0f))
+                        .rotateZ((float)Math.toRadians(270.0f))
+                );
+            }
         }
     }
 

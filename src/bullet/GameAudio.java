@@ -23,6 +23,7 @@ public class GameAudio
     private Sound shotgunShotSound;
     private Sound shotgunPumpSound;
     private Sound apePlasmaSound;
+    private Sound apeDieSound;
 
     private float shotgunPumpTimer = 0.0f;
 
@@ -43,6 +44,7 @@ public class GameAudio
         AudioResource shotgunRes = audioMgr.createAudioResource("shotGun.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource pumpRes = audioMgr.createAudioResource("sgPump.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource apePlasmaRes = audioMgr.createAudioResource("apePlasma.wav", AudioResourceType.AUDIO_SAMPLE);
+        AudioResource apeDieRes = audioMgr.createAudioResource("apeDie.wav", AudioResourceType.AUDIO_SAMPLE);
 
         healthPickupSound = createSound(healthRes, 75, false);
         ammoPickupSound = createSound(ammoRes, 75, false);
@@ -52,10 +54,12 @@ public class GameAudio
         shotgunShotSound = createSound(shotgunRes, 75, false);
         shotgunPumpSound = createSound(pumpRes, 75, false);
         apePlasmaSound = createSound(apePlasmaRes, 100, false);
+        apeDieSound = createSound(apeDieRes, 100, false);
 
         configure3DSound(healthPickupSound, 20.0f, 0.5f, 2.0f);
         configure3DSound(ammoPickupSound, 20.0f, 0.5f, 2.0f);
         configure3DSound(apePlasmaSound, 35.0f, 1.0f, 2.0f);
+        configure3DSound(apeDieSound, 35.0f, 1.0f, 2.0f);
     }
 
     public void releaseAll()
@@ -70,6 +74,7 @@ public class GameAudio
         release(shotgunShotSound);
         release(shotgunPumpSound);
         release(apePlasmaSound);
+        release(apeDieSound);
     }
 
     public void setEarParameters(GameObject player, Camera cam)
@@ -150,6 +155,14 @@ public class GameAudio
 
         apePlasmaSound.setLocation(location);
         apePlasmaSound.play();
+    }
+
+    public void playApeDie(Vector3f location)
+    {
+        if (apeDieSound == null) return;
+
+        apeDieSound.setLocation(location);
+        apeDieSound.play();
     }
 
     private Sound createSound(AudioResource resource, int volume, boolean loop)
