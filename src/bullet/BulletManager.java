@@ -94,7 +94,8 @@ public class BulletManager {
                     bulletRemoved = true;
                 }
             } else {
-                if (game.checkAndDamageApe(loc)) bulletRemoved = true;
+                if (game.checkAndDamageApe(loc) || game.checkAndDamageSkinny(loc))
+                    bulletRemoved = true;
             }
 
             b.lifetime -= dt;

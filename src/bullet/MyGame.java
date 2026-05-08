@@ -113,7 +113,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // physics
     private PhysicsEngine physicsEngine;
-    private PhysicsObject playerP, terrainP;
+    private PhysicsObject playerP, terrainP, terrainP0, terrainP1;
     private boolean physicsRunning = true;
 
     // mouselook
@@ -138,6 +138,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // map selection
     private int mapSelection = 0;
+    private boolean pendingSkinnySpawn = false;
 
     // ghost rendering
     private AnimatedShape ghostS;
@@ -171,6 +172,27 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private float apeThinkTimer = 0.0f;
     private final float apeThinkInterval = 0.25f;
+
+    // skinwalker
+    private java.util.ArrayList<GameObject> activeSkinnys = new java.util.ArrayList<>();
+    private java.util.ArrayList<PhysicsObject> activeSkinnyPhysics = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeSkinnyHealth = new java.util.ArrayList<>();
+    private java.util.ArrayList<Boolean> activeSkinnyDead = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeSkinnyBounceTimers = new java.util.ArrayList<>();
+    private int skinnyKillCount = 0;
+
+    // UFO tractor beam
+    private boolean tractorBeamActive = false;
+    private boolean playerInTractorBeam = false;
+    private Light tractorBeamLight;
+    private PhysicsObject tractorBeamP;
+
+    private Vector3f tractorBeamCenter = new Vector3f(0.0f, 0.0f, 0.0f);
+
+    private final float tractorBeamRadius = 5.0f;
+    private final float tractorBeamHeight = 35.0f;
+    private final float tractorBeamLiftSpeed = 8.0f;
+    private float tractorBeamTopY = 35.0f;
 
     private final float worldGravity = -9.8f;
     private final float shotgunSpread = 0.12f;
@@ -408,7 +430,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void updateStaticObjectsToTerrain()
     {
-        if (terr == null) return;
+        if (terr == null || mapSelection == 1) return;
 
         if (centerBuilding != null) snapObjectToTerrain(centerBuilding, 0.0f);
 
@@ -535,98 +557,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (time <= 0.0f)
                 removeApe(i);
-        }
-    }
-
-    private void updateApeAI(float dt)
-    {
-        if (player == null) return;
-
-        Vector3f playerPos = player.getWorldLocation();
-
-        for (int i = 0; i < activeApes.size(); i++)
-        {
-            if (activeApeDead.get(i)) continue;
-
-            GameObject apeObj = activeApes.get(i);
-            PhysicsObject apePhys = activeApePhysics.get(i);
-
-            if (apeObj == null || apePhys == null) continue;
-
-            Vector3f apePos = apePhys.getLocation();
-            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
-            float dist = toPlayer.length();
-
-            if (dist < 0.001f) continue;
-            toPlayer.normalize();
-
-            // face player
-            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
-            apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
-
-            // circle player while staying in combat range
-            float preferredMin = 8.0f;
-            float preferredMax = 18.0f;
-            float moveSpeed = 3.0f;
-            float strafeDir = activeApeStrafeDirs.get(i);
-
-            Vector3f moveDir = new Vector3f();
-
-            // move toward player
-            if (dist > preferredMax)
-            {
-                moveDir.set(toPlayer.x, 0.0f, toPlayer.z);
-            }
-            // back away a bit
-            else if (dist < preferredMin)
-            {
-                moveDir.set(-toPlayer.x, 0.0f, -toPlayer.z);
-            }
-            // strafe around player
-            else
-            {
-                moveDir.set(-toPlayer.z * strafeDir, 0.0f, toPlayer.x * strafeDir);
-            }
-
-            if (moveDir.lengthSquared() > 0.0001f)
-            {
-                moveDir.normalize();
-                apePhys.setLinearVelocity(new float[]
-                {
-                    moveDir.x * moveSpeed,
-                    apePhys.getLinearVelocity()[1],
-                    moveDir.z * moveSpeed
-                });
-            }
-
-            // occasionally change strafe direction
-            float think = activeApeThinkTimers.get(i) + dt;
-            if (think >= 1.0f)
-            {
-                think = 0.0f;
-                if (Math.random() < 0.25)
-                {
-                    activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
-                }
-            }
-            activeApeThinkTimers.set(i, think);
-
-            // fire cooldown
-            float fireCd = activeApeFireCooldowns.get(i) - dt;
-            if (fireCd <= 0.0f && dist <= 25.0f)
-            {
-                Vector3f fireDir = new Vector3f(playerPos)
-                    .add(0.0f, 1.0f, 0.0f)
-                    .sub(apePos.x, apePos.y + 1.5f, apePos.z)
-                    .normalize();
-
-                Vector3f muzzlePos = new Vector3f(apePos.x, apePos.y + 1.5f, apePos.z)
-                    .add(new Vector3f(fireDir).mul(1.2f));
-
-                spawnEnemyBullet(muzzlePos, fireDir, true);
-                fireCd = 1.25f;   // ape fire rate
-            }
-            activeApeFireCooldowns.set(i, fireCd);
         }
     }
 
@@ -854,6 +784,103 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void spawnSkinny(Vector3f pos)
+    {
+        float terrainY = terr.getHeight(pos.x, pos.z);
+
+        Vector3f spawnPos = new Vector3f(pos.x, terrainY + 2.0f, pos.z);
+
+        GameObject s = new GameObject(GameObject.root(), skinnyS, skinnyTx);
+        s.setLocalScale(new Matrix4f().scaling(0.8f));
+        s.setLocalTranslation(new Matrix4f().translation(spawnPos));
+
+        Quaternionf rot = new Quaternionf();
+
+        PhysicsObject p = engine.getSceneGraph().addPhysicsCapsule(
+            1.0f,
+            spawnPos,
+            rot,
+            1,
+            0.4f,
+            1.0f
+        );
+
+        p.setFriction(0.6f);
+        p.setDamping(0.1f, 0.8f);
+        p.setBounciness(0.0f);
+        p.disableSleeping();
+
+        s.setPhysicsObject(p);
+
+        activeSkinnys.add(s);
+        activeSkinnyPhysics.add(p);
+        activeSkinnyHealth.add(100);
+        activeSkinnyDead.add(false);
+        activeSkinnyBounceTimers.add((float)Math.random());
+    }
+
+    private void spawnSkinnyWave()
+    {
+        Vector3f[] points = {
+            new Vector3f(-45.29f,0,-39.20f),
+            new Vector3f(31.86f,0,-67.46f),
+            new Vector3f(59.16f,0,35.07f),
+            new Vector3f(2.05f,0,65.86f),
+            new Vector3f(-62.13f,0,13.12f),
+            new Vector3f(-60.20f,0,-64.62f),
+            new Vector3f(-83.75f,0,28.96f)
+        };
+
+        for (Vector3f base : points)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                Vector3f offset = new Vector3f(
+                    (float)(Math.random()*8 - 4),
+                    0,
+                    (float)(Math.random()*8 - 4)
+                );
+
+                spawnSkinny(new Vector3f(base).add(offset));
+            }
+        }
+
+        System.out.println("Spawned " + (points.length * 10) + " skinnys");
+    }
+
+    private void updateSkinnys(float dt)
+    {
+        if (player == null) return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        for (int i = 0; i < activeSkinnys.size(); i++)
+        {
+            if (activeSkinnyDead.get(i)) continue;
+
+            PhysicsObject p = activeSkinnyPhysics.get(i);
+            Vector3f pos = p.getLocation();
+
+            float timer = activeSkinnyBounceTimers.get(i) - dt;
+
+            if (timer <= 0.0f)
+            {
+                Vector3f dir = new Vector3f(playerPos).sub(pos);
+                if (dir.length() > 0.01f) dir.normalize();
+
+                p.setLinearVelocity(new float[]{
+                    dir.x * 4.0f,
+                    8.0f,   // bounce up
+                    dir.z * 4.0f
+                });
+
+                timer = 1.5f + (float)Math.random();
+            }
+
+            activeSkinnyBounceTimers.set(i, timer);
+        }
+    }
+
     @Override
     public void loadSkyBoxes()
     {
@@ -920,6 +947,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 bulletSphereS = new Sphere();
 
                 ufoS = new ImportedModel("ufo.obj");
+                
                 break;
 
             case 1:
@@ -1104,6 +1132,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         engine.getSceneGraph().addLight(mainLight);
 
         pickupManager.initializeLights(engine);
+
+        tractorBeamLight = new Light();
+        tractorBeamLight.setType(Light.LightType.SPOTLIGHT);
+        tractorBeamLight.setAmbient(0.0f, 0.2f, 0.3f);
+        tractorBeamLight.setDiffuse(0.2f, 0.9f, 1.0f);
+        tractorBeamLight.setSpecular(0.2f, 0.9f, 1.0f);
+        tractorBeamLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+        tractorBeamLight.setCutoffAngle(25.0f);
+        tractorBeamLight.setOffAxisExponent(1.5f);
+        tractorBeamLight.setConstantAttenuation(1.0f);
+        tractorBeamLight.setLinearAttenuation(0.01f);
+        tractorBeamLight.setQuadraticAttenuation(0.001f);
+        tractorBeamLight.setLocation(new Vector3f(0.0f, 35.0f, 0.0f));
+        tractorBeamLight.disable();
+
+        engine.getSceneGraph().addLight(tractorBeamLight);
     }
 
     @Override
@@ -1183,15 +1227,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		rot = new Quaternionf();
 		(terr.getWorldRotation()).getNormalizedRotation(rot);
 
-		TextureImage activeHeightMap = (mapSelection == 1) ? heightMap1 : heightMap0;
+        terrainP0 = engine.getSceneGraph().addPhysicsStaticTerrainMesh(
+            loc, rot, heightMap0, 100.0f, 50.0f, 100
+        );
 
-		terrainP = (engine.getSceneGraph()).addPhysicsStaticTerrainMesh(
-			loc, rot, activeHeightMap, 100.0f, 50.0f, 100
-		);
-		terrainP.setBounciness(0.0f);
-		terrainP.setFriction(1.0f);
-		terrainP.disableSleeping();
-		terr.setPhysicsObject(terrainP);
+        terrainP1 = engine.getSceneGraph().addPhysicsStaticTerrainMesh(
+            new Vector3f(0.0f, -10000.0f, 0.0f), rot, heightMap1, 100.0f, 50.0f, 100
+        );
+
+        terrainP0.setBounciness(0.0f);
+        terrainP0.setFriction(1.0f);
+        terrainP0.disableSleeping();
+
+        terrainP1.setBounciness(0.0f);
+        terrainP1.setFriction(1.0f);
+        terrainP1.disableSleeping();
+
+        switchTerrainPhysics();
 
         addBuildingBoxCollider(centerBuilding, 18.0f, 18.0f, 18.0f);
 
@@ -1328,6 +1380,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
         elapsTime += dt;
 
+        if (pendingSkinnySpawn)
+        {
+            spawnSkinnyWave();
+            pendingSkinnySpawn = false;
+        }
+
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
         setEarParameters();
         
@@ -1375,12 +1433,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         updateApeBehaviorTrees(dt);
 
+        updateSkinnys(dt);
+
         updateApesFromPhysics();
         ufoWaveManager.update(dt);
         updateDeadApes(dt);
 
         bulletManager.update(dt);
 
+        updateTractorBeam(dt);
         
         // handle plasma burst firing
         if (plasmaBurstShotsRemaining > 0)
@@ -1426,10 +1487,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (skinnyS != null) skinnyS.updateAnimation();
         if (apeS != null) apeS.updateAnimation();
 
-        // if no apes alive, trigger next UFO
-        if (!ufoWaveManager.isActive() && activeApes.size() == 0)
+        // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
+        if (!ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
         {
-            ufoWaveManager.startNextWave();
+            if (ufoWaveManager.isFinalWaveComplete())
+                startTractorBeam();
+            else
+                ufoWaveManager.startNextWave();
         }
 
         updateStaticObjectsToTerrain();
@@ -1520,6 +1584,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                         case START_GAME:
                             setMapSelection(menu.getSelectedMapIndex());
                             applyMapSelection();
+                            switchTerrainPhysics();
+                            if (mapSelection == 1)
+                                {
+                                    hideMapZeroBuildings();
+                                    pendingSkinnySpawn = true;
+                                }
                             gameState = GameState.PLAYING;
                             engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
@@ -1566,6 +1636,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     restartGame = new RestartGame(this);
                     restartGame.performAction(0, null);
                     break;
+                // DEBUG KEYS
+                case KeyEvent.VK_T:
+                debugStartFinalUfoBeam();
+                break;
+
                 default:
                     break;
             }
@@ -1850,6 +1925,36 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         return false;
     }
 
+    public boolean checkAndDamageSkinny(Vector3f loc)
+    {
+        for (int i = activeSkinnys.size() - 1; i >= 0; i--)
+        {
+            if (activeSkinnyDead.get(i)) continue;
+
+            GameObject s = activeSkinnys.get(i);
+
+            if (loc.distance(s.getWorldLocation()) < 1.0f)
+            {
+                int hp = activeSkinnyHealth.get(i) - 100;
+                activeSkinnyHealth.set(i, hp);
+
+                if (hp <= 0)
+                {
+                    activeSkinnyDead.set(i, true);
+                    skinnyKillCount++;
+
+                    s.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    PhysicsObject p = activeSkinnyPhysics.get(i);
+                    if (p != null)
+                        physicsEngine.removeObject(p.getUID());
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void updateApesFromPhysics()
     {
         for (int i = 0; i < activeApes.size(); i++)
@@ -1882,6 +1987,82 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void startTractorBeam()
+    {
+        if (tractorBeamActive) return;
+
+        tractorBeamActive = true;
+        playerInTractorBeam = false;
+
+        Vector3f ufoPos = ufoWaveManager.getLargeUfoPosition();
+
+        tractorBeamTopY = ufoPos.y;
+
+        tractorBeamCenter.set(
+            ufoPos.x,
+            ufoPos.y - (tractorBeamHeight * 0.5f),
+            ufoPos.z
+        );
+
+        if (tractorBeamLight != null)
+        {
+            tractorBeamLight.setLocation(new Vector3f(ufoPos.x, ufoPos.y - 1.0f, ufoPos.z));
+            tractorBeamLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+            tractorBeamLight.enable();
+        }
+
+        if (tractorBeamP == null && physicsEngine != null)
+        {
+            tractorBeamP = engine.getSceneGraph().addPhysicsCylinder(
+                0.0f,
+                tractorBeamCenter,
+                new Quaternionf(),
+                1,
+                tractorBeamRadius,
+                tractorBeamHeight / 2.0f
+            );
+
+            tractorBeamP.disableSleeping();
+        }
+
+        System.out.println("Tractor beam active from large UFO");
+    }
+
+    private void updateTractorBeam(float dt)
+    {
+        if (!tractorBeamActive || player == null || playerP == null)
+            return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        float dx = playerPos.x - tractorBeamCenter.x;
+        float dz = playerPos.z - tractorBeamCenter.z;
+        float horizontalDist = (float)Math.sqrt(dx * dx + dz * dz);
+
+        boolean insideBeam =
+            horizontalDist <= tractorBeamRadius &&
+            playerPos.y >= 0.0f &&
+            playerPos.y <= tractorBeamTopY;
+
+        if (insideBeam)
+        {
+            playerInTractorBeam = true;
+
+            playerP.setLinearVelocity(new float[] {
+                0.0f,
+                tractorBeamLiftSpeed,
+                0.0f
+            });
+
+            if (playerPos.y >= tractorBeamTopY - 1.0f)
+                swapToCaseOneTerrain();
+        }
+        else
+        {
+            playerInTractorBeam = false;
+        }
+    }
+
     private void applyMapSelection()
     {
         if (terr == null) return;
@@ -1899,6 +2080,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 terr.setHeightMap(heightMap1);
                 (engine.getSceneGraph()).setActiveSkyBoxTexture(spaceSkyBox);
                 terr.getRenderStates().setTileFactor(100);
+                hideMapZeroBuildings();
                 break;
             default:
                 terr.setTextureImage(terrTxMap0);
@@ -1906,6 +2088,78 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 terr.getRenderStates().setTileFactor(10);
                 break;
         }
+    }
+
+    private void switchTerrainPhysics()
+    {
+        if (terrainP0 == null || terrainP1 == null) return;
+
+        if (mapSelection == 0)
+        {
+            terrainP0.setLocation(new float[] { 0.0f, 0.0f, 0.0f });
+            terrainP1.setLocation(new float[] { 0.0f, -10000.0f, 0.0f });
+            terrainP = terrainP0;
+        }
+        else
+        {
+            terrainP0.setLocation(new float[] { 0.0f, -10000.0f, 0.0f });
+            terrainP1.setLocation(new float[] { 0.0f, 0.0f, 0.0f });
+            terrainP = terrainP1;
+        }
+
+        terr.setPhysicsObject(terrainP);
+    }
+
+    private void hideMapZeroBuildings()
+    {
+        if (centerBuilding != null)
+            centerBuilding.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        for (GameObject b : smallBuildings)
+            if (b != null) b.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        for (GameObject b : smallBuildings2)
+            if (b != null) b.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        for (PhysicsObject p : buildingPhysics)
+            if (p != null && physicsEngine != null)
+                physicsEngine.removeObject(p.getUID());
+
+        buildingPhysics.clear();
+    }
+
+    private void swapToCaseOneTerrain()
+    {
+        tractorBeamActive = false;
+        playerInTractorBeam = false;
+
+        if (tractorBeamLight != null)
+            tractorBeamLight.disable();
+
+        if (tractorBeamP != null && physicsEngine != null)
+        {
+            physicsEngine.removeObject(tractorBeamP.getUID());
+            tractorBeamP = null;
+        }
+
+        hideMapZeroBuildings();
+
+        mapSelection = 1;
+        applyMapSelection();
+        switchTerrainPhysics();
+        pendingSkinnySpawn = true;
+
+        float y = terr.getHeight(0.0f, 0.0f) + playerVisualYOffset + 2.0f;
+        Vector3f newPos = new Vector3f(0.0f, y, 0.0f);
+
+        playerP.setLocation(new float[] { newPos.x, newPos.y, newPos.z });
+        playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        player.setLocalTranslation(
+            new Matrix4f().translation(newPos.x, newPos.y - playerVisualYOffset, newPos.z)
+        );
+
+        System.out.println("Swapped to case 1 terrain");
     }
 
     // ========================================================
@@ -1945,4 +2199,32 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public GhostManager getGhostManager() { return gm; }
     public ObjShape getGhostShape() { return ghostS; }
     public TextureImage getGhostTexture() { return ghostT; }
+
+    //-------------------------------
+    //DEBUGGING
+    private void debugStartFinalUfoBeam()
+    {
+        mapSelection = 0;
+
+        // remove any active apes so final condition is clean
+        for (int i = activeApes.size() - 1; i >= 0; i--)
+            removeApe(i);
+
+        // force beam from large UFO
+        ufoWaveManager.debugPlaceLargeUfo();
+        startTractorBeam();
+
+        Vector3f beamPos = tractorBeamCenter;
+        float y = terr.getHeight(beamPos.x, beamPos.z) + playerVisualYOffset + 1.0f;
+
+        playerP.setLocation(new float[] {
+            beamPos.x + 1.0f,
+            y,
+            beamPos.z + 1.0f
+        });
+
+        playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        System.out.println("DEBUG: player moved near tractor beam");
+    }
 }

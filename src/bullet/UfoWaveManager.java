@@ -75,6 +75,19 @@ public class UfoWaveManager
         currentWave++;
     }
 
+    public boolean isFinalWaveComplete()
+    {
+        return currentWave > UFO_DROP_POSITIONS.length && !active;
+    }
+
+    public Vector3f getLargeUfoPosition()
+    {
+        if (largeUfo == null)
+            return new Vector3f(LARGE_UFO_DROP_POSITION.x, LARGE_UFO_DROP_POSITION.y + 18.0f, LARGE_UFO_DROP_POSITION.z);
+
+        return largeUfo.getWorldLocation();
+    }
+
     public void update(float dt)
     {
         if (!active || activeUfo == null || waveDropFinished) return;
@@ -131,5 +144,19 @@ public class UfoWaveManager
 
             apeSpawner.accept(new Vector3f(dropPos.x + offsetX, dropPos.y, dropPos.z + offsetZ));
         }
+    }
+    
+    // DEBUG METHOD
+    public void debugPlaceLargeUfo()
+    {
+        if (largeUfo == null) return;
+
+        Vector3f pos = new Vector3f(
+            LARGE_UFO_DROP_POSITION.x,
+            LARGE_UFO_DROP_POSITION.y + 18.0f,
+            LARGE_UFO_DROP_POSITION.z
+        );
+
+        largeUfo.setLocalTranslation(new Matrix4f().translation(pos));
     }
 }
