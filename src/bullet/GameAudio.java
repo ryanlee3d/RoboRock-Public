@@ -46,15 +46,15 @@ public class GameAudio
         AudioResource apePlasmaRes = audioMgr.createAudioResource("apePlasma.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource apeDieRes = audioMgr.createAudioResource("apeDie.wav", AudioResourceType.AUDIO_SAMPLE);
 
-        healthPickupSound = createSound(healthRes, 75, false);
-        ammoPickupSound = createSound(ammoRes, 75, false);
-        pistolShotSound = createSound(pistolRes, 75, false);
-        rifleShotSound = createSound(rifleRes, 75, true);
-        plasmaRifleSound = createSound(plasmaRes, 75, false);
-        shotgunShotSound = createSound(shotgunRes, 75, false);
-        shotgunPumpSound = createSound(pumpRes, 75, false);
-        apePlasmaSound = createSound(apePlasmaRes, 100, false);
-        apeDieSound = createSound(apeDieRes, 100, false);
+        healthPickupSound = createSound(healthRes, 50, false);
+        ammoPickupSound = createSound(ammoRes, 50, false);
+        pistolShotSound = createSound(pistolRes, 50, false);
+        rifleShotSound = createSound(rifleRes, 50, true);
+        plasmaRifleSound = createSound(plasmaRes, 50, false);
+        shotgunShotSound = createSound(shotgunRes, 50, false);
+        shotgunPumpSound = createSound(pumpRes, 50, false);
+        apePlasmaSound = createSound(apePlasmaRes, 50, false);
+        apeDieSound = createSound(apeDieRes, 200, false);
 
         configure3DSound(healthPickupSound, 20.0f, 0.5f, 2.0f);
         configure3DSound(ammoPickupSound, 20.0f, 0.5f, 2.0f);
