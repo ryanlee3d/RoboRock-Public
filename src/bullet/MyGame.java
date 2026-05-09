@@ -54,14 +54,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private IAction restartGame;
 
     // game objects
-    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
+    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding, brain;
 
     // instances of game objects for repeat use
     private GameObject[] smallBuildings = new GameObject[8];
     private GameObject[] smallBuildings2 = new GameObject[8];
 
     // shapes for animated objects
-    private AnimatedShape playerS, skinnyS, apeS;
+    private AnimatedShape playerS, skinnyS, apeS, brainS;
 
     // player animation values
     private boolean isMoving = false;
@@ -81,7 +81,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS;
 
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
-        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx;
+        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx, brainTx;
 
     // object init locations and scale
     private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
@@ -139,6 +139,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     // map selection
     private int mapSelection = 0;
     private boolean pendingSkinnySpawn = false;
+    private boolean pendingCaseOneStart = false;
+
+    //floating brain
+    private boolean brainFloating = false;
 
     // ghost rendering
     private AnimatedShape ghostS;
@@ -440,9 +444,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         for (int i = 0; i < smallBuildings2.length; i++)
             if (smallBuildings2[i] != null) snapObjectToTerrain(smallBuildings2[i], 0.0f);
-
-        if (skinny != null) snapObjectToTerrain(skinny, 0.0f);
-        if (ape != null) snapObjectToTerrain(ape, 0.0f);
     }
 
     private void updatePlayerVisibilityForCameraMode()
@@ -793,6 +794,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         GameObject s = new GameObject(GameObject.root(), skinnyS, skinnyTx);
         s.setLocalScale(new Matrix4f().scaling(0.8f));
         s.setLocalTranslation(new Matrix4f().translation(spawnPos));
+        skinnyS.playAnimation("GRAPPLE", 0.3f, AnimatedShape.EndType.LOOP, 0);
 
         Quaternionf rot = new Quaternionf();
 
@@ -910,6 +912,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public void loadShapes()
     {
         terrS = new TerrainPlane(1000);
+        brainS = new AnimatedShape("brain.rkm", "brain.rks");
+        brainS.loadAnimation("FLOAT", "brainFloat.rka");
+        skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
+        skinnyS.loadAnimation("GRAPPLE", "skinnyGrapple.rka");
         switch (mapSelection)
         {
             case 0:
@@ -924,9 +930,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 ghostS.loadAnimation("STAND", "RobotStanding.rka");
                 ghostS.loadAnimation("SWAP", "RobotSwapGun.rka");
                 ghostS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
-
-                skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
-                skinnyS.loadAnimation("WAVE", "wave.rka");
 
                 apeS = new AnimatedShape("ape.rkm", "ape.rks");
                 apeS.loadAnimation("RUN", "apeRun.rka");
@@ -976,6 +979,41 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void setupCaseOneStart()
+    {
+        float playerY = terr.getHeight(0.0f, 0.0f) + playerVisualYOffset + 2.0f;
+
+        playerP.setLocation(new float[] { 0.0f, playerY, 10.0f });
+        playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        player.setLocalTranslation(
+            new Matrix4f().translation(0.0f, playerY - playerVisualYOffset, 0.0f)
+        );
+
+        float brainZ = -8.0f;
+        float brainY = terr.getHeight(0.0f, brainZ) + 1.0f;
+
+        if (brain != null)
+        {
+            brain.setLocalTranslation(new Matrix4f().translation(1.5f, brainY, brainZ));
+            brain.setLocalScale(new Matrix4f().scaling(0.1f));
+        }
+    }
+
+    private void updateBrainAnimation()
+    {
+        if (brain == null || brainS == null || player == null || mapSelection != 1)
+            return;
+
+        float dist = player.getWorldLocation().distance(brain.getWorldLocation());
+
+        if (!brainFloating && dist <= 8.0f)
+        {
+            brainS.playAnimation("FLOAT", 0.3f, AnimatedShape.EndType.LOOP, 0);
+            brainFloating = true;
+        }
+    }
+
     @Override
     public void loadTextures()
     {
@@ -984,6 +1022,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         skinnyTx = new TextureImage("skinny.jpg");
         apeTx = new TextureImage("ape.jpg");
+        brainTx = new TextureImage("brain.jpg");
 
         smallBuildingTx = new TextureImage("smallBuilding.png");
         smallBuilding2Tx = new TextureImage("smallBuilding2.png");
@@ -1018,29 +1057,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         player.getRenderStates().setModelOrientationCorrection((new Matrix4f())
             .rotationY((float)java.lang.Math.toRadians(270.0f)));
         playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
-
-        skinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
-        skinny.setLocalTranslation(new Matrix4f().translation(0.0f, 1.0f, -5.0f));
-        skinny.setLocalScale(new Matrix4f().scaling(1.0f));
-        skinnyS.playAnimation("WAVE", 0.3f, AnimatedShape.EndType.LOOP, 0);
-
-        ape = new GameObject(GameObject.root(), apeS, apeTx);
-        ape.setLocalTranslation(new Matrix4f().translation(5.0f, 1.0f, -5.0f));
-        ape.setLocalScale(new Matrix4f().scaling(0.01f));
-        ape.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotationX((float)java.lang.Math.toRadians(90.0f))
-            .rotateZ((float)java.lang.Math.toRadians(180.0f)));
-        apeS.playAnimation("RUN", 0.25f, AnimatedShape.EndType.LOOP, 0);
-
-        apePlasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
-        apePlasmaRifle.setLocalTranslation(new Matrix4f().translation(-0.05f, 1.5f, 0.7f));
-        apePlasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f)));
-        apePlasmaRifle.setLocalScale(new Matrix4f().scaling(0.5f));
-        apePlasmaRifle.setParent(ape);
-        apePlasmaRifle.propagateTranslation(true);
-        apePlasmaRifle.propagateRotation(true);
-        apePlasmaRifle.propagateScale(true);
-        apePlasmaRifle.applyParentRotationToPosition(true);
 
         pickupManager.buildObjects(ammoS, ammoTx, healthS, healthTx);
 
@@ -1116,6 +1132,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         terr.setLocalTranslation((new Matrix4f()).translation(0f, 0f, 0f));
         terr.setLocalScale((new Matrix4f()).scaling(100.0f, 50.0f, 100.0f));
         terr.getRenderStates().setTiling(1);
+
+        brain = new GameObject(GameObject.root(), brainS, brainTx);
+        brain.setLocalScale(new Matrix4f().scaling(0.1f));
+        brain.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+        brain.getRenderStates().setModelOrientationCorrection(new Matrix4f().rotationX((float)java.lang.Math.toRadians(180.0f)));
 
         bulletManager.buildObjects(bulletSphereS, bulletYellowTx, bulletBlueTx);
 
@@ -1380,6 +1401,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
         elapsTime += dt;
 
+        if (pendingCaseOneStart)
+        {
+            setupCaseOneStart();
+            pendingCaseOneStart = false;
+        }
+
         if (pendingSkinnySpawn)
         {
             spawnSkinnyWave();
@@ -1436,7 +1463,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         updateSkinnys(dt);
 
         updateApesFromPhysics();
+
+        updateSkinnysFromPhysics();
+
         ufoWaveManager.update(dt);
+
         updateDeadApes(dt);
 
         bulletManager.update(dt);
@@ -1486,6 +1517,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (gm != null) gm.updateGhostAnimations(dt);
         if (skinnyS != null) skinnyS.updateAnimation();
         if (apeS != null) apeS.updateAnimation();
+        if (brainS != null) brainS.updateAnimation();
+        
+        updateBrainAnimation();
 
         // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
         if (!ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
@@ -1586,10 +1620,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             applyMapSelection();
                             switchTerrainPhysics();
                             if (mapSelection == 1)
-                                {
-                                    hideMapZeroBuildings();
-                                    pendingSkinnySpawn = true;
-                                }
+                            {
+                                hideMapZeroBuildings();
+                                pendingCaseOneStart = true;
+                                pendingSkinnySpawn = true;
+                            }
                             gameState = GameState.PLAYING;
                             engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
@@ -1987,6 +2022,34 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void updateSkinnysFromPhysics()
+    {
+        for (int i = 0; i < activeSkinnys.size(); i++)
+        {
+            if (activeSkinnyDead.get(i)) continue;
+
+            GameObject skinnyObj = activeSkinnys.get(i);
+            PhysicsObject skinnyPhys = activeSkinnyPhysics.get(i);
+
+            if (skinnyObj == null || skinnyPhys == null) continue;
+
+            Vector3f loc = skinnyPhys.getLocation();
+
+            skinnyObj.setLocalTranslation(
+                new Matrix4f().translation(loc.x, loc.y - 1.0f, loc.z)
+            );
+
+            Vector3f playerPos = player.getWorldLocation();
+            Vector3f toPlayer = new Vector3f(playerPos).sub(loc);
+
+            if (toPlayer.lengthSquared() > 0.001f)
+            {
+                float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+                skinnyObj.setLocalRotation(new Matrix4f().rotationY(yaw));
+            }
+        }
+    }
+
     private void startTractorBeam()
     {
         if (tractorBeamActive) return;
@@ -2149,15 +2212,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         switchTerrainPhysics();
         pendingSkinnySpawn = true;
 
-        float y = terr.getHeight(0.0f, 0.0f) + playerVisualYOffset + 2.0f;
-        Vector3f newPos = new Vector3f(0.0f, y, 0.0f);
-
-        playerP.setLocation(new float[] { newPos.x, newPos.y, newPos.z });
-        playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
-
-        player.setLocalTranslation(
-            new Matrix4f().translation(newPos.x, newPos.y - playerVisualYOffset, newPos.z)
-        );
+        setupCaseOneStart();
 
         System.out.println("Swapped to case 1 terrain");
     }
