@@ -199,9 +199,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Boolean> activeSkinnyDead = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeSkinnyBounceTimers = new java.util.ArrayList<>();
     private java.util.ArrayList<GameObject> activeSkinnyPlasma = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeSkinnyFireCooldowns = new java.util.ArrayList<>();
     private java.util.ArrayList<GameObject> activeSkinnyGrapple = new java.util.ArrayList<>();
     private java.util.ArrayList<GameObject> activeSkinnyGrappleLines = new java.util.ArrayList<>();
     private int skinnyKillCount = 0;
+
+
 
     // UFO tractor beam
     private boolean tractorBeamActive = false;
@@ -890,6 +893,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeSkinnyHealth.add(100);
         activeSkinnyDead.add(false);
         activeSkinnyBounceTimers.add((float)Math.random());
+        activeSkinnyFireCooldowns.add((float)(Math.random() * 1.5f));
     }
 
     private void spawnSkinnyWave()
@@ -981,7 +985,41 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 }
             }
         }  
+        // === SKINNY SHOOTING ===
+        float dist = new Vector3f(playerPos).sub(pos).length();
 
+        float fireCd = activeSkinnyFireCooldowns.get(i) - dt;
+
+        if (fireCd <= 0.0f && dist <= 20.0f)
+        {
+            GameObject skinnyGun = null;
+
+            if (i < activeSkinnyPlasma.size())
+                skinnyGun = activeSkinnyPlasma.get(i);
+
+            Vector3f muzzleBase;
+
+            if (skinnyGun != null)
+                muzzleBase = skinnyGun.getWorldLocation();
+            else
+                muzzleBase = new Vector3f(pos.x, pos.y + 1.5f, pos.z);
+
+            Vector3f fireDir = new Vector3f(playerPos)
+                .add(0.0f, 1.0f, 0.0f)
+                .sub(muzzleBase)
+                .normalize();
+
+            Vector3f muzzlePos = new Vector3f(muzzleBase)
+                .add(new Vector3f(fireDir).mul(0.75f));
+
+            spawnEnemyBullet(muzzlePos, fireDir, true);
+
+            gameAudio.playApePlasma(muzzlePos);
+
+            fireCd = 1.5f;
+        }
+
+        activeSkinnyFireCooldowns.set(i, fireCd);
         activeSkinnyBounceTimers.set(i, timer);
         }
     }
