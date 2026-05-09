@@ -54,7 +54,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private IAction restartGame;
 
     // game objects
-    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding, brain;
+    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding, brain, playerGrappleLine;
 
     // instances of game objects for repeat use
     private GameObject[] smallBuildings = new GameObject[8];
@@ -78,7 +78,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final WeaponInventory weaponInventory = new WeaponInventory();
 
     // shapes and textures for game objects
-    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS, grappleGunS;
+    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS, grappleGunS, skinnyGrappleLineS;
 
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
         heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx, brainTx, grappleGunTx;
@@ -108,10 +108,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f);
     private float weaponScale = 0.5f;
     private float knifeWeaponScale = 6f;
-    private float weaponRotY = 0.0f;
+    private float weaponRotY = 0.0f;  
 
     // hidden scale for inactive weapons
     private final float hiddenWeaponScale = 0.0001f;
+
+    //grapple gun
+    private GameObject grapplePickup;
+    private boolean grapplePickupActive = false;
+    private boolean playerHasGrapple = true; // true for testing
+    private boolean playerGrappling = false;
+    private float grappleTimer = 0.0f;
+    private final float grappleDuration = 0.75f;
+    private final float grappleSpeed = 80.0f;
+    private Vector3f grappleDir = new Vector3f();
 
     // lighting
     private Light mainLight;
@@ -188,6 +198,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Integer> activeSkinnyHealth = new java.util.ArrayList<>();
     private java.util.ArrayList<Boolean> activeSkinnyDead = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeSkinnyBounceTimers = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeSkinnyPlasma = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeSkinnyGrapple = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeSkinnyGrappleLines = new java.util.ArrayList<>();
     private int skinnyKillCount = 0;
 
     // UFO tractor beam
@@ -801,6 +814,59 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         s.setLocalTranslation(new Matrix4f().translation(spawnPos));
         skinnyS.playAnimation("GRAPPLE", 0.3f, AnimatedShape.EndType.LOOP, 0);
 
+        // === RIGHT HAND PLASMA ===
+        GameObject plasma = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+        plasma.setParent(s);
+        plasma.propagateTranslation(true);
+        plasma.propagateRotation(true);
+        plasma.propagateScale(true);
+        plasma.applyParentRotationToPosition(true);
+
+        plasma.setLocalTranslation(
+            new Matrix4f().translation(-0.3f, 1.25f, 0.75f)
+        );
+        plasma.setLocalScale(new Matrix4f().scaling(weaponScale / 75.0f));
+        plasma.setLocalRotation(
+            new Matrix4f().rotationY(0.0f)
+        );
+
+        // === LEFT HAND GRAPPLE ===
+        GameObject grapple = new GameObject(GameObject.root(), grappleGunS, grappleGunTx);
+        grapple.setParent(s);
+        grapple.propagateTranslation(true);
+        grapple.propagateRotation(true);
+        grapple.propagateScale(true);
+        grapple.applyParentRotationToPosition(true);
+
+        grapple.setLocalTranslation(
+            new Matrix4f().translation(0.25f, 1.45f, 0.25f)
+        );
+        grapple.setLocalScale(new Matrix4f().scaling(0.03f));
+        grapple.setLocalRotation(
+            new Matrix4f().rotationX((float)Math.toRadians(45.0f))
+        );
+
+        GameObject grappleLine = new GameObject(GameObject.root(), skinnyGrappleLineS);
+        grappleLine.getRenderStates().setColor(new Vector3f(0.6f, 0.6f, 0.6f));
+        grappleLine.setParent(s);
+        grappleLine.propagateTranslation(true);
+        grappleLine.propagateRotation(true);
+        grappleLine.propagateScale(true);
+        grappleLine.applyParentRotationToPosition(true);
+
+        grappleLine.setLocalTranslation(
+            new Matrix4f().translation(0.25f, 1.55f, 0.25f)
+        );
+        grappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+        grappleLine.setLocalRotation(
+            new Matrix4f().rotationX((float)java.lang.Math.toRadians(45.0f))
+        );
+
+        activeSkinnyGrappleLines.add(grappleLine);
+        // store references
+        activeSkinnyPlasma.add(plasma);
+        activeSkinnyGrapple.add(grapple);
+
         Quaternionf rot = new Quaternionf();
 
         PhysicsObject p = engine.getSceneGraph().addPhysicsCapsule(
@@ -869,22 +935,54 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             Vector3f pos = p.getLocation();
 
             float timer = activeSkinnyBounceTimers.get(i) - dt;
+            
+        if (timer <= 0.0f)
+        {
+            Vector3f dir = new Vector3f(playerPos).sub(pos);
+            if (dir.length() > 0.01f) dir.normalize();
 
-            if (timer <= 0.0f)
+            p.setLinearVelocity(new float[]{
+                dir.x * 4.0f,
+                8.0f,
+                dir.z * 4.0f
+            });
+
+
+            timer = 1.5f + (float)Math.random();
+        }
+
+        float[] vel = p.getLinearVelocity();
+
+        if (i < activeSkinnyGrappleLines.size())
+        {
+            GameObject line = activeSkinnyGrappleLines.get(i);
+
+            if (line != null)
             {
-                Vector3f dir = new Vector3f(playerPos).sub(pos);
-                if (dir.length() > 0.01f) dir.normalize();
+                if (vel[1] > 0.0f)
+                {
+                    float height = java.lang.Math.max(0.5f, p.getLocation().y() - 2.0f);
 
-                p.setLinearVelocity(new float[]{
-                    dir.x * 4.0f,
-                    8.0f,   // bounce up
-                    dir.z * 4.0f
-                });
+                    line.setLocalScale(
+                        new Matrix4f().scaling(0.05f, height * 1.2f, 0.05f)
+                    );
 
-                timer = 1.5f + (float)Math.random();
+                    line.setLocalTranslation(
+                        new Matrix4f().translation(0.25f, 1.55f + height * 0.6f, 0.25f)
+                    );
+
+                    line.setLocalRotation(
+                        new Matrix4f().rotationX((float)java.lang.Math.toRadians(45.0f))
+                    );
+                }
+                else
+                {
+                    line.setLocalScale(new Matrix4f().scaling(0.0001f));
+                }
             }
+        }  
 
-            activeSkinnyBounceTimers.set(i, timer);
+        activeSkinnyBounceTimers.set(i, timer);
         }
     }
 
@@ -922,6 +1020,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
         skinnyS.loadAnimation("GRAPPLE", "skinnyGrapple.rka");
         grappleGunS = new ImportedModel("grapple.obj");
+        skinnyGrappleLineS = new Cube();
         switch (mapSelection)
         {
             case 0:
@@ -1101,6 +1200,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             .rotateY((float)java.lang.Math.toRadians(90.0f))
             .rotateX((float)java.lang.Math.toRadians(90.0f)));
         attachWeaponToPlayer(shotGun);
+
+        grapplePickup = new GameObject(GameObject.root(), grappleGunS, grappleGunTx);
+        grapplePickup.setLocalScale(new Matrix4f().scaling(0.0001f));
+        grapplePickup.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+
+        playerGrappleLine = new GameObject(GameObject.root(), skinnyGrappleLineS);
+        playerGrappleLine.getRenderStates().setColor(new Vector3f(0.6f, 0.6f, 0.6f));
+        playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+        playerGrappleLine.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
 
         weaponInventory.reset();
         isFiring = false;
@@ -1470,6 +1578,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         updateSkinnys(dt);
 
+        checkGrapplePickup();
+
+        updatePlayerGrapple(dt);
+
         updateApesFromPhysics();
 
         updateSkinnysFromPhysics();
@@ -1674,6 +1786,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     break;
                 case KeyEvent.VK_R:
                     weaponInventory.beginReload();
+                    break;
+                case KeyEvent.VK_E:
+                    startPlayerGrapple();
                     break;
                 case KeyEvent.VK_BACK_SLASH:
                     restartGame = new RestartGame(this);
@@ -1988,7 +2103,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     activeSkinnyDead.set(i, true);
                     skinnyKillCount++;
 
+                    if (skinnyKillCount % 10 == 0)
+                    {
+                        dropGrapplePickup(s.getWorldLocation());
+                    }
+
                     s.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    GameObject plasma = activeSkinnyPlasma.get(i);
+                    GameObject grapple = activeSkinnyGrapple.get(i);
+
+                    if (plasma != null)
+                        plasma.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    if (grapple != null)
+                        grapple.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    if (i < activeSkinnyGrappleLines.size())
+                    {
+                        GameObject line = activeSkinnyGrappleLines.get(i);
+                        if (line != null)
+                            line.setLocalScale(new Matrix4f().scaling(0.0001f));
+                    }
 
                     PhysicsObject p = activeSkinnyPhysics.get(i);
                     if (p != null)
@@ -2057,6 +2193,89 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
                 skinnyObj.setLocalRotation(new Matrix4f().rotationY(yaw));
             }
+        }
+    }
+
+    private void dropGrapplePickup(Vector3f pos)
+    {
+        if (grapplePickup == null) return;
+
+        grapplePickup.setLocalTranslation(
+            new Matrix4f().translation(pos.x, pos.y + 1.0f, pos.z)
+        );
+
+        grapplePickup.setLocalScale(new Matrix4f().scaling(0.08f));
+        grapplePickupActive = true;
+
+        System.out.println("Grapple pickup dropped");
+    }
+
+    private void checkGrapplePickup()
+    {
+        if (!grapplePickupActive || grapplePickup == null || player == null) return;
+
+        if (player.getWorldLocation().distance(grapplePickup.getWorldLocation()) < 2.0f)
+        {
+            playerHasGrapple = true;
+            grapplePickupActive = false;
+
+            grapplePickup.setLocalScale(new Matrix4f().scaling(0.0001f));
+            grapplePickup.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+
+            System.out.println("Player picked up grapple");
+        }
+    }
+
+    private void startPlayerGrapple()
+    {
+        if (!playerHasGrapple || playerGrappling || cam == null || playerP == null) return;
+
+        grappleDir.set(cam.getN()).normalize();
+
+        playerGrappling = true;
+        grappleTimer = grappleDuration;
+
+        System.out.println("Player grapple fired");
+        if (playerGrappleLine != null)
+        {
+            Vector3f start = new Vector3f(player.getWorldLocation()).add(0.0f, 1.5f, 0.0f);
+            Vector3f end = new Vector3f(start).add(new Vector3f(grappleDir).mul(60.0f));
+            Vector3f mid = new Vector3f(start).add(end).mul(0.5f);
+
+            playerGrappleLine.setLocalTranslation(new Matrix4f().translation(mid));
+
+            playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.05f, 30.0f, 0.05f));
+
+            float yaw = (float)java.lang.Math.atan2(grappleDir.x, grappleDir.z);
+            float pitch = (float)java.lang.Math.asin(grappleDir.y);
+
+            playerGrappleLine.setLocalRotation(
+                new Matrix4f()
+                    .rotationY(yaw)
+                    .rotateX((float)java.lang.Math.toRadians(90.0f) - pitch)
+            );
+        }
+    }
+
+    private void updatePlayerGrapple(float dt)
+    {
+        if (!playerGrappling || playerP == null) return;
+
+        grappleTimer -= dt;
+
+        playerP.setLinearVelocity(new float[] {
+            grappleDir.x * grappleSpeed,
+            grappleDir.y * grappleSpeed,
+            grappleDir.z * grappleSpeed
+        });
+
+        if (grappleTimer <= 0.0f)
+        {
+            playerGrappling = false;
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+            if (playerGrappleLine != null)
+                playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
         }
     }
 
