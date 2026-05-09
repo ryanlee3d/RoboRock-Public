@@ -78,10 +78,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final WeaponInventory weaponInventory = new WeaponInventory();
 
     // shapes and textures for game objects
-    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS;
+    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS, grappleGunS;
 
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
-        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx, brainTx;
+        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx, brainTx, grappleGunTx;
+
+    //DEBUG
+    private GameObject debugSkinny;
+    private GameObject debugSkinnyPlasmaRifle;
+    private GameObject debugSkinnyGrappleGun;
 
     // object init locations and scale
     private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
@@ -916,6 +921,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         brainS.loadAnimation("FLOAT", "brainFloat.rka");
         skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
         skinnyS.loadAnimation("GRAPPLE", "skinnyGrapple.rka");
+        grappleGunS = new ImportedModel("grapple.obj");
         switch (mapSelection)
         {
             case 0:
@@ -1045,6 +1051,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         bulletBlueTx = new TextureImage("plasmaBullet.jpg");
 
         ufoTx = new TextureImage("ufo.png");
+
+        grappleGunTx = new TextureImage("grapple.png");
     }
 
     @Override
@@ -1673,9 +1681,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     break;
                 // DEBUG KEYS
                 case KeyEvent.VK_T:
-                debugStartFinalUfoBeam();
-                break;
-
+                    debugStartFinalUfoBeam();
+                    break;
+                case KeyEvent.VK_Y:
+                    spawnDebugSkinnyLoadout();
+                    break;
                 default:
                     break;
             }
@@ -2281,5 +2291,61 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
 
         System.out.println("DEBUG: player moved near tractor beam");
+    }
+    private void spawnDebugSkinnyLoadout()
+    {
+        if (player == null || skinnyS == null || plasmaRifleS == null || grappleGunS == null)
+            return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        Vector3f forward = new Vector3f(cam.getN()).normalize();
+
+        Vector3f spawnPos = new Vector3f(playerPos)
+            .add(new Vector3f(forward).mul(6.0f));
+
+        spawnPos.y = 52.0f;
+
+        debugSkinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
+        debugSkinny.setLocalTranslation(new Matrix4f().translation(spawnPos));
+        debugSkinny.setLocalScale(new Matrix4f().scaling(0.8f));
+        debugSkinny.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(180.0f)));
+
+        skinnyS.playAnimation("GRAPPLE", 0.3f, AnimatedShape.EndType.LOOP, 0);
+
+        // right hand plasma rifle
+        debugSkinnyPlasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+        debugSkinnyPlasmaRifle.setParent(debugSkinny);
+        debugSkinnyPlasmaRifle.propagateTranslation(true);
+        debugSkinnyPlasmaRifle.propagateRotation(true);
+        debugSkinnyPlasmaRifle.propagateScale(true);
+        debugSkinnyPlasmaRifle.applyParentRotationToPosition(true);
+
+        debugSkinnyPlasmaRifle.setLocalTranslation(
+            new Matrix4f().translation(-0.3f, 1.25f, 0.75f)
+        );
+        debugSkinnyPlasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale/75.0f));
+        debugSkinnyPlasmaRifle.setLocalRotation(
+            new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f))
+        );
+
+        // left hand grapple gun, pointed upward
+        debugSkinnyGrappleGun = new GameObject(GameObject.root(), grappleGunS, grappleGunTx);
+        debugSkinnyGrappleGun.setParent(debugSkinny);
+        debugSkinnyGrappleGun.propagateTranslation(true);
+        debugSkinnyGrappleGun.propagateRotation(true);
+        debugSkinnyGrappleGun.propagateScale(true);
+        debugSkinnyGrappleGun.applyParentRotationToPosition(true);
+
+        debugSkinnyGrappleGun.setLocalTranslation(
+            new Matrix4f().translation(0.25f, 1.45f, 0.25f)
+        );
+        debugSkinnyGrappleGun.setLocalScale(new Matrix4f().scaling(0.03f));
+        debugSkinnyGrappleGun.setLocalRotation(
+            new Matrix4f()
+                .rotationX((float)java.lang.Math.toRadians(45.0f))
+        );
+
+        System.out.println("DEBUG: spawned skinny weapon fit test");
     }
 }
