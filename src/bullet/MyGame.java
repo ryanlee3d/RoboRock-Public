@@ -159,6 +159,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     //floating brain
     private boolean brainFloating = false;
 
+    // brain boss AI
+    private boolean brainActive = false;
+    private float brainActionTimer = 3.0f;
+    private float brainCircleAngle = 0.0f;
+    private float brainCircleDir = 1.0f;
+    private int brainAttackType = 0;
+    private int brainShotsLeft = 0;
+    private float brainShotTimer = 0.0f;
+    private Vector3f brainRushTarget = new Vector3f();
+    private boolean brainRushing = false;
+    private int brainHealth = 5000;
+    private final int brainMaxHealth = 5000;
+
     // ghost rendering
     private AnimatedShape ghostS;
     private TextureImage ghostT;
@@ -1140,6 +1153,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             brain.setLocalTranslation(new Matrix4f().translation(1.5f, brainY, brainZ));
             brain.setLocalScale(new Matrix4f().scaling(0.1f));
+            brainActive = false;
+            brainHealth = brainMaxHealth;
+            brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
+            brainCircleAngle = 0.0f;
+            brainCircleDir = 1.0f;
+            brainRushing = false;
         }
     }
 
@@ -1154,7 +1173,229 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             brainS.playAnimation("FLOAT", 0.3f, AnimatedShape.EndType.LOOP, 0);
             brainFloating = true;
+
+            brainActive = true;
+            brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
+            brainCircleAngle = 0.0f;
+            brainCircleDir = 1.0f;
+            brainRushing = false;
         }
+    }
+
+    private void updateBrainBoss(float dt)
+    {
+        if (!brainActive || brain == null || player == null || mapSelection != 1)
+            return;
+
+        if (brainRushing)
+        {
+            updateBrainRush(dt);
+            return;
+        }
+
+        updateBrainCircle(dt);
+
+        if (brainShotsLeft > 0)
+        {
+            updateBrainShooting(dt);
+            return;
+        }
+
+        brainActionTimer -= dt;
+
+        if (brainActionTimer <= 0.0f)
+        {
+            startRandomBrainAction();
+            brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
+        }
+    }
+
+    private void updateBrainCircle(float dt)
+    {
+        Vector3f playerPos = player.getWorldLocation();
+
+        brainCircleAngle += brainCircleDir * dt * 0.8f;
+
+        if (Math.random() < 0.005f)
+            brainCircleDir *= -1.0f;
+
+        float radius = 12.0f;
+        float height = 8.0f;
+
+        float x = playerPos.x + (float)java.lang.Math.cos(brainCircleAngle) * radius;
+        float z = playerPos.z + (float)java.lang.Math.sin(brainCircleAngle) * radius;
+        float y = playerPos.y + height + (float)java.lang.Math.sin(elapsTime * 2.0f) * 1.5f;
+
+        brain.setLocalTranslation(new Matrix4f().translation(x, y, z));
+
+        Vector3f toPlayer = new Vector3f(playerPos).sub(brain.getWorldLocation());
+
+        if (toPlayer.lengthSquared() > 0.001f)
+        {
+            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            brain.setLocalRotation(new Matrix4f().rotationY(yaw));
+        }
+    }
+
+    private void startRandomBrainAction()
+    {
+        brainAttackType = (int)(Math.random() * 4.0f);
+
+        switch (brainAttackType)
+        {
+            case 0:
+                // sine arc stream
+                brainShotsLeft = 30;
+                brainShotTimer = 0.0f;
+                break;
+
+            case 1:
+                // 5x5 square burst
+                brainSquareBurst();
+                break;
+
+            case 2:
+                // fast random spread
+                brainShotsLeft = 45;
+                brainShotTimer = 0.0f;
+                break;
+
+            case 3:
+                // rush attack
+                brainRushTarget.set(player.getWorldLocation());
+                brainRushing = true;
+                break;
+        }
+    }
+
+    private void updateBrainShooting(float dt)
+    {
+        brainShotTimer -= dt;
+
+        float delay = brainAttackType == 2 ? 0.035f : 0.055f;
+
+        if (brainShotTimer > 0.0f)
+            return;
+
+        if (brainAttackType == 0)
+            brainSineShot();
+        else if (brainAttackType == 2)
+            brainRandomShot();
+
+        brainShotsLeft--;
+        brainShotTimer = delay;
+    }
+
+    private void brainSineShot()
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f target = new Vector3f(player.getWorldLocation()).add(0.0f, 1.0f, 0.0f);
+
+        Vector3f dir = new Vector3f(target).sub(brainPos).normalize();
+
+        Vector3f side = new Vector3f(-dir.z, 0.0f, dir.x);
+        if (side.lengthSquared() > 0.001f)
+            side.normalize();
+
+        float wave = (float)java.lang.Math.sin((30 - brainShotsLeft) * 0.55f) * 0.45f;
+
+        dir.add(new Vector3f(side).mul(wave)).normalize();
+
+        Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
+
+        spawnEnemyBullet(muzzle, dir, true);
+        gameAudio.playApePlasma(muzzle);
+    }
+
+    private void brainRandomShot()
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f target = new Vector3f(player.getWorldLocation()).add(0.0f, 1.0f, 0.0f);
+
+        Vector3f dir = new Vector3f(target).sub(brainPos).normalize();
+
+        dir.add(
+            ((float)Math.random() - 0.5f) * 0.7f,
+            ((float)Math.random() - 0.5f) * 0.35f,
+            ((float)Math.random() - 0.5f) * 0.7f
+        ).normalize();
+
+        Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
+
+        spawnEnemyBullet(muzzle, dir, true);
+        gameAudio.playApePlasma(muzzle);
+    }
+
+    private void brainSquareBurst()
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f target = new Vector3f(player.getWorldLocation()).add(0.0f, 1.0f, 0.0f);
+
+        Vector3f forward = new Vector3f(target).sub(brainPos).normalize();
+        Vector3f right = new Vector3f(-forward.z, 0.0f, forward.x);
+
+        if (right.lengthSquared() < 0.001f)
+            right.set(1.0f, 0.0f, 0.0f);
+        else
+            right.normalize();
+
+        Vector3f up = new Vector3f(0.0f, 1.0f, 0.0f);
+
+        for (int x = -2; x <= 2; x++)
+        {
+            for (int y = -2; y <= 2; y++)
+            {
+                Vector3f dir = new Vector3f(forward)
+                    .add(new Vector3f(right).mul(x * 0.15f))
+                    .add(new Vector3f(up).mul(y * 0.15f))
+                    .normalize();
+
+                Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
+                spawnEnemyBullet(muzzle, dir, true);
+            }
+        }
+
+        gameAudio.playApePlasma(brainPos);
+    }
+
+    private void updateBrainRush(float dt)
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f toTarget = new Vector3f(brainRushTarget).sub(brainPos);
+
+        if (toTarget.length() <= 1.0f)
+        {
+            brainRushing = false;
+            return;
+        }
+
+        toTarget.normalize();
+
+        float rushSpeed = 22.0f;
+        Vector3f newPos = new Vector3f(brainPos).add(toTarget.mul(rushSpeed * dt));
+
+        brain.setLocalTranslation(new Matrix4f().translation(newPos));
+
+        float yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+        brain.setLocalRotation(new Matrix4f().rotationY(yaw));
+    }
+
+    private String getBrainHealthBar()
+    {
+        int bars = java.lang.Math.max(0, brainHealth / 250);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Brain[");
+
+        for (int i = 0; i < bars; i++)
+            sb.append("=");
+
+        for (int i = bars; i < 20; i++)
+            sb.append(" ");
+
+        sb.append("]");
+
+        return sb.toString();
     }
 
     @Override
@@ -1678,6 +1919,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (brainS != null) brainS.updateAnimation();
         
         updateBrainAnimation();
+        updateBrainBoss(dt);
 
         // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
         if (!ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
@@ -1735,6 +1977,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
             new Vector3f(1, 1, 1), 15, 15
         );
+        if (brainActive && brainHealth > 0)
+        {
+            engine.getHUDmanager().setHUD4(
+                getBrainHealthBar(),
+                new Vector3f(1, 0, 0),
+                440,
+                650
+            );
+        }
+        else
+        {
+            engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
+        }
 
         pickupManager.update(dt, terr);
     }
@@ -1787,6 +2042,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+                            engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
                             break;
                         case SELECT_MAP:
                             menu.nextMap();
@@ -2171,6 +2427,29 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 return true;
             }
         }
+        return false;
+    }
+
+    public boolean checkAndDamageBrain(Vector3f loc)
+    {
+        if (!brainActive || brain == null || brainHealth <= 0)
+            return false;
+
+        if (loc.distance(brain.getWorldLocation()) < 2.0f)
+        {
+            brainHealth -= 20;
+
+            if (brainHealth <= 0)
+            {
+                brainHealth = 0;
+                brainActive = false;
+                brain.setLocalScale(new Matrix4f().scaling(0.0001f));
+                System.out.println("Brain defeated!");
+            }
+
+            return true;
+        }
+
         return false;
     }
 

@@ -94,7 +94,9 @@ public class BulletManager {
                     bulletRemoved = true;
                 }
             } else {
-                if (game.checkAndDamageApe(loc) || game.checkAndDamageSkinny(loc))
+                if (game.checkAndDamageApe(loc) ||
+                    game.checkAndDamageSkinny(loc) ||
+                    game.checkAndDamageBrain(loc))
                     bulletRemoved = true;
             }
 
