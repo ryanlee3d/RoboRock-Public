@@ -143,8 +143,8 @@ public class PickupManager
             if (ammoActive[i] && ammoPickups[i] != null && playerPos.distance(ammoPickups[i].getWorldLocation()) <= COLLISION_RANGE)
             {
                 weapons.addAmmoPickupBundle();
+                audio.playAmmoPickup(ammoPickups[i].getWorldLocation());
                 hideAmmoPickup(i);
-                audio.playAmmoPickup();
             }
         }
 
@@ -163,8 +163,8 @@ public class PickupManager
             if (healthActive[i] && healthPickups[i] != null && playerPos.distance(healthPickups[i].getWorldLocation()) <= COLLISION_RANGE)
             {
                 game.setPlayerHealth(game.getPlayerHealthMax());
+                audio.playHealthPickup(healthPickups[i].getWorldLocation());
                 hideHealthPickup(i);
-                audio.playHealthPickup();
             }
         }
     }

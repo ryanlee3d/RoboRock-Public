@@ -53,12 +53,9 @@ public class GameAudio
         shotgunPumpSound = createSound(pumpRes, 75, false);
         apePlasmaSound = createSound(apePlasmaRes, 100, false);
 
-        if (apePlasmaSound != null)
-        {
-            apePlasmaSound.setMaxDistance(35.0f);
-            apePlasmaSound.setMinDistance(1.0f);
-            apePlasmaSound.setRollOff(2.0f);
-        }
+        configure3DSound(healthPickupSound, 20.0f, 0.5f, 2.0f);
+        configure3DSound(ammoPickupSound, 20.0f, 0.5f, 2.0f);
+        configure3DSound(apePlasmaSound, 35.0f, 1.0f, 2.0f);
     }
 
     public void releaseAll()
@@ -81,7 +78,7 @@ public class GameAudio
 
         audioMgr.getEar().setLocation(player.getWorldLocation());
 
-        Vector3f forward = new Vector3f(cam.getN()).mul(-1.0f).normalize();
+        Vector3f forward = new Vector3f(cam.getN()).mul(1.0f).normalize(); //-1 to flip sound orientation
         audioMgr.getEar().setOrientation(forward, new Vector3f(0.0f, 1.0f, 0.0f));
     }
 
@@ -110,14 +107,14 @@ public class GameAudio
         }
     }
 
-    public void playHealthPickup()
+    public void playHealthPickup(Vector3f location)
     {
-        play(healthPickupSound);
+        playAt(healthPickupSound, location);
     }
 
-    public void playAmmoPickup()
+    public void playAmmoPickup(Vector3f location)
     {
-        play(ammoPickupSound);
+        playAt(ammoPickupSound, location);
     }
 
     public void playPistolShot()
@@ -174,5 +171,22 @@ public class GameAudio
     {
         if (sound != null)
             sound.play();
+    }
+
+            private void playAt(Sound sound, Vector3f location)
+    {
+        if (sound == null || location == null) return;
+
+        sound.setLocation(location);
+        sound.play();
+    }
+
+    private void configure3DSound(Sound sound, float maxDist, float minDist, float rolloff)
+    {
+        if (sound == null) return;
+
+        sound.setMaxDistance(maxDist);
+        sound.setMinDistance(minDist);
+        sound.setRollOff(rolloff);
     }
 }
