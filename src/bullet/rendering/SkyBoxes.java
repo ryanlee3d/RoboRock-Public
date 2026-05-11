@@ -1,4 +1,4 @@
-package bullet;
+package bullet.rendering;
 
 import java.util.HashMap;
 import java.util.Map;

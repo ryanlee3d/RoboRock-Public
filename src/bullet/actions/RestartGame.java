@@ -1,4 +1,4 @@
-package bullet;
+package bullet.actions;
 
 import bullet.MyGame;
 import net.java.games.input.Event;

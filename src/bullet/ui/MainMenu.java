@@ -1,4 +1,4 @@
-package bullet;
+package bullet.ui;
 
 public class MainMenu
 {

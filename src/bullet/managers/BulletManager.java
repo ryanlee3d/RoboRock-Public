@@ -1,4 +1,4 @@
-package bullet;
+package bullet.managers;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -10,6 +10,8 @@ import tage.ObjShape;
 import tage.TextureImage;
 import tage.physics.PhysicsEngine;
 import tage.physics.PhysicsObject;
+import bullet.MyGame;
+import bullet.combat.Bullet;
 
 public class BulletManager {
     private final MyGame game;

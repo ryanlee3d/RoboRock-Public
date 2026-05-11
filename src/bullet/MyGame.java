@@ -7,6 +7,7 @@ import tage.input.action.*;
 
 import java.awt.*;
 import java.awt.event.*;
+import java.util.Random;
 import org.joml.*;
 import org.joml.Math;
 
@@ -15,6 +16,18 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import tage.networking.IGameConnection.ProtocolType;
+
+import bullet.actions.*;
+import bullet.audio.GameAudio;
+import bullet.camera.OverheadCameraController;
+import bullet.combat.WeaponInventory;
+import bullet.combat.WeaponType;
+import bullet.managers.*;
+import bullet.network.*;
+import bullet.rendering.SkyBoxes;
+import bullet.states.GameState;
+import bullet.states.ShopState;
+import bullet.ui.MainMenu;
 
 // physics imports
 import tage.physics.PhysicsEngine;
@@ -29,6 +42,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean isShuttingDown = false;
     private GameState gameState = GameState.MENU;
+    private final ShopState shopState = new ShopState();
     private int menuSelection = 0;
     private final MainMenu menu = new MainMenu();
 
@@ -36,6 +50,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final GameAudio gameAudio = new GameAudio();
     private final PickupManager pickupManager = new PickupManager(this);
     private final UfoWaveManager ufoWaveManager;
+    private final Random random = new Random();
 
     private InputManager im;
     private CameraOrbit3D orbitCam;
@@ -84,7 +99,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx;
 
     // object init locations and scale
-    private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
+    // Y is resolved from the selected terrain height before the physics capsule is created.
+    private Vector3f playerStartPos = new Vector3f(-61.13f, 0.0f, 96.12f);
     private float playerScale = 0.01f;
 
     // player / terrain tuning
@@ -115,8 +131,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private PhysicsEngine physicsEngine;
     private PhysicsObject playerP, terrainP;
     private boolean physicsRunning = true;
+    private boolean terrainPhysicsRefreshPending = false;
 
-    // mouselook
     private Robot robot;
     private boolean mouseModeInitiated = false;
     private boolean isRecentering = false;
@@ -328,6 +344,43 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         obj.setLocalLocation(new Vector3f(pos.x, height + yOffset, pos.z));
     }
 
+    private Vector3f getPlayerTerrainStartLocation()
+    {
+        if (terr == null)
+            return new Vector3f(playerStartPos);
+
+        float terrainY = terr.getHeight(playerStartPos.x, playerStartPos.z);
+            // Add a slight drop buffer so the physics engine doesn't spawn the capsule inside the mesh
+            return new Vector3f(playerStartPos.x, terrainY + 2.0f, playerStartPos.z);
+    }
+
+    private Vector3f getPlayerPhysicsCenter(Vector3f playerVisualLocation)
+    {
+        return new Vector3f(
+            playerVisualLocation.x,
+            playerVisualLocation.y + playerVisualYOffset,
+            playerVisualLocation.z
+        );
+    }
+
+    private void placePlayerAtTerrainStart()
+    {
+        if (player == null) return;
+
+        Vector3f visualLoc = getPlayerTerrainStartLocation();
+        player.setLocalLocation(visualLoc);
+        prevPlayerPos.set(visualLoc);
+
+        if (playerP != null)
+        {
+            Quaternionf rot = new Quaternionf();
+            player.getWorldRotation().getNormalizedRotation(rot);
+            playerP.setTransform(getPlayerPhysicsCenter(visualLoc), rot);
+            playerP.setLinearVelocity(new float[] { 0f, 0f, 0f });
+            playerP.setAngularVelocity(new float[] { 0f, 0f, 0f });
+        }
+    }
+
     private void syncGameObjectToPhysics(GameObject go)
     {
         if (go == null || go.getPhysicsObject() == null) return;
@@ -358,8 +411,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 knife.setLocalScale(new Matrix4f().scaling(knifeWeaponScale));
                 knife.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-                    .rotateY((float)java.lang.Math.toRadians(-90.0f))
-                    .rotateZ((float)java.lang.Math.toRadians(25.0f)));
+                    .rotateY((float)Math.toRadians(-90.0f))
+                    .rotateZ((float)Math.toRadians(25.0f)));
             }
             else knife.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
         }
@@ -391,6 +444,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (skinny != null) snapObjectToTerrain(skinny, 0.0f);
         if (ape != null) snapObjectToTerrain(ape, 0.0f);
+        if (shopState.getVendingMachine() != null)
+            snapObjectToTerrain(shopState.getVendingMachine(), ShopState.VENDING_TERRAIN_Y_OFFSET);
     }
 
     private void updatePlayerVisibilityForCameraMode()
@@ -426,7 +481,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         GameObject newApeGun = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
         newApeGun.setLocalTranslation(new Matrix4f().translation(-0.05f, 1.5f, 0.7f));
-        newApeGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f)));
+        newApeGun.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(0.0f)));
         newApeGun.setLocalScale(new Matrix4f().scaling(0.5f));
 
         newApeGun.setParent(newApe);
@@ -460,8 +515,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         activeApeDead.add(false);
         activeApeDeathTimers.add(0.0f);
         activeApeThinkTimers.add(0.0f);
-        activeApeFireCooldowns.add((float)(Math.random() * 1.5f));
-        activeApeStrafeDirs.add(Math.random() < 0.5 ? -1.0f : 1.0f);
+        activeApeFireCooldowns.add(random.nextFloat() * 1.5f);
+        activeApeStrafeDirs.add(random.nextFloat() < 0.5f ? -1.0f : 1.0f);
         activeApeTrees.add(createApeBehaviorTree(newApe, apeP));
     }
 
@@ -524,7 +579,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             toPlayer.normalize();
 
             // face player
-            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            float yaw = (float)Math.atan2(toPlayer.x, toPlayer.z);
             apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
 
             // circle player while staying in combat range
@@ -567,7 +622,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             if (think >= 1.0f)
             {
                 think = 0.0f;
-                if (Math.random() < 0.25)
+                if (random.nextFloat() < 0.25f)
                 {
                     activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
                 }
@@ -666,7 +721,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             toPlayer.normalize();
 
-            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            float yaw = (float)Math.atan2(toPlayer.x, toPlayer.z);
             apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
 
             return BTStatus.BH_SUCCESS;
@@ -760,7 +815,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 think = 0.0f;
 
-                if (Math.random() < 0.25)
+                if (random.nextFloat() < 0.25f)
                     activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
             }
 
@@ -880,6 +935,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 bulletSphereS = new Sphere();
 
                 ufoS = new ImportedModel("ufo.obj");
+
                 break;
 
             case 1:
@@ -904,8 +960,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 pistolS = new ImportedModel("pistol.obj");
 
                 bulletSphereS = new Sphere();
+
                 break;
         }
+
+        shopState.loadShape();
     }
 
     @Override
@@ -948,7 +1007,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         player.setLocalScale(new Matrix4f().scaling(playerScale));
         prevPlayerPos.set(player.getWorldLocation());
         player.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotationY((float)java.lang.Math.toRadians(270.0f)));
+            .rotationY((float)Math.toRadians(270.0f)));
         playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
 
         skinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
@@ -960,13 +1019,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         ape.setLocalTranslation(new Matrix4f().translation(5.0f, 1.0f, -5.0f));
         ape.setLocalScale(new Matrix4f().scaling(0.01f));
         ape.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotationX((float)java.lang.Math.toRadians(90.0f))
-            .rotateZ((float)java.lang.Math.toRadians(180.0f)));
+            .rotationX((float)Math.toRadians(90.0f))
+            .rotateZ((float)Math.toRadians(180.0f)));
         apeS.playAnimation("RUN", 0.25f, AnimatedShape.EndType.LOOP, 0);
 
         apePlasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
         apePlasmaRifle.setLocalTranslation(new Matrix4f().translation(-0.05f, 1.5f, 0.7f));
-        apePlasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f)));
+        apePlasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(0.0f)));
         apePlasmaRifle.setLocalScale(new Matrix4f().scaling(0.5f));
         apePlasmaRifle.setParent(ape);
         apePlasmaRifle.propagateTranslation(true);
@@ -978,36 +1037,36 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         knife = new GameObject(GameObject.root(), knifeS, knifeTx);
         knife.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        knife.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+        knife.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
         knife.setLocalScale(new Matrix4f().scaling(weaponScale));
         attachWeaponToPlayer(knife);
 
         pistol = new GameObject(GameObject.root(), pistolS, pistolTx);
         pistol.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        pistol.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+        pistol.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
         pistol.setLocalScale(new Matrix4f().scaling(weaponScale));
         attachWeaponToPlayer(pistol);
 
         plasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
         plasmaRifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+        plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
         plasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale));
         attachWeaponToPlayer(plasmaRifle);
 
         rifle = new GameObject(GameObject.root(), rifleS, rifleTx);
         rifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        rifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+        rifle.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
         rifle.setLocalScale(new Matrix4f().scaling(weaponScale));
-        rifle.getRenderStates().setModelOrientationCorrection((new Matrix4f()).rotateX((float)java.lang.Math.toRadians(90.0f)));
+        rifle.getRenderStates().setModelOrientationCorrection((new Matrix4f()).rotateX((float)Math.toRadians(90.0f)));
         attachWeaponToPlayer(rifle);
 
         shotGun = new GameObject(GameObject.root(), shotGunS, shotGunTx);
         shotGun.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y - 0.25f, weaponPos.z - 0.2f));
-        shotGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
+        shotGun.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
         shotGun.setLocalScale(new Matrix4f().scaling(weaponScale));
         shotGun.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotateY((float)java.lang.Math.toRadians(90.0f))
-            .rotateX((float)java.lang.Math.toRadians(90.0f)));
+            .rotateY((float)Math.toRadians(90.0f))
+            .rotateX((float)Math.toRadians(90.0f)));
         attachWeaponToPlayer(shotGun);
 
         weaponInventory.reset();
@@ -1029,6 +1088,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         };
 
         ufoWaveManager.buildObjects(ufoS, ufoTx);
+        ufoWaveManager.reset();
 
         for (int i = 0; i < smallBuildings.length; i++)
         {
@@ -1050,6 +1110,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         terr.getRenderStates().setTiling(1);
 
         bulletManager.buildObjects(bulletSphereS, bulletYellowTx, bulletBlueTx);
+
+        shopState.buildObjects(centerBuildingTx);
 
         applyMapSelection();
     }
@@ -1120,7 +1182,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         physicsEngine = engine.getSceneGraph().getPhysicsEngine();
         physicsEngine.setGravity(gravity);
 
-        Vector3f loc = player.getWorldLocation();
+        rebuildTerrainPhysicsObject();
+        placePlayerAtTerrainStart();
+
+        Vector3f loc = getPlayerPhysicsCenter(player.getWorldLocation());
         Quaternionf rot = new Quaternionf();
         player.getWorldRotation().getNormalizedRotation(rot);
 
@@ -1138,20 +1203,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         playerP.disableSleeping();
         playerP.setAngularFactor(0f);
         player.setPhysicsObject(playerP);
-
-		loc = terr.getWorldLocation();
-		rot = new Quaternionf();
-		(terr.getWorldRotation()).getNormalizedRotation(rot);
-
-		TextureImage activeHeightMap = (mapSelection == 1) ? heightMap1 : heightMap0;
-
-		terrainP = (engine.getSceneGraph()).addPhysicsStaticTerrainMesh(
-			loc, rot, activeHeightMap, 100.0f, 50.0f, 100
-		);
-		terrainP.setBounciness(0.0f);
-		terrainP.setFriction(1.0f);
-		terrainP.disableSleeping();
-		terr.setPhysicsObject(terrainP);
 
         bulletManager.setPhysicsEngine(physicsEngine);
 
@@ -1284,7 +1335,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         setEarParameters();
         
         currentMoveDir.set(0, 0, 0);
-        im.update(dt);
+        if (gameState == GameState.PLAYING || gameState == GameState.BETWEEN_WAVES)
+        {
+            im.update(dt);
+        }
 
         if (playerP != null)
         {
@@ -1305,6 +1359,18 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
 
         processNetworking(dt);
+
+        if (gameState == GameState.SHOP)
+        {
+            shopState.renderShopHud(engine, playerCredits);
+            return;
+        }
+
+        if (gameState == GameState.PAUSED)
+        {
+            engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
+            return;
+        }
 
         weaponInventory.updateTimers(dt);
         updateWeaponAudio(dt);
@@ -1347,20 +1413,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (skinnyS != null) skinnyS.updateAnimation();
         if (apeS != null) apeS.updateAnimation();
 
-        // if no apes alive, trigger next UFO
-        if (!ufoWaveManager.isActive() && activeApes.size() == 0)
-        {
-            ufoWaveManager.startNextWave();
-        }
+        gameState = shopState.updateWaveTimer(dt, gameState, ufoWaveManager.isActive(), activeApes.size(), ufoWaveManager);
 
         updateStaticObjectsToTerrain();
 
         Vector3f camN = cam.getN();
         float flatX = camN.x;
         float flatZ = camN.z;
-        if (java.lang.Math.abs(flatX) > 0.0001f || java.lang.Math.abs(flatZ) > 0.0001f)
+        if (Math.abs(flatX) > 0.0001f || Math.abs(flatZ) > 0.0001f)
         {
-            float yaw = (float)java.lang.Math.atan2(flatX, flatZ);
+            float yaw = (float)Math.atan2(flatX, flatZ);
             player.setLocalRotation(new Matrix4f().rotationY(yaw));
         }
 
@@ -1378,7 +1440,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 		vz = vel[2];
 	}
 
-	float horizontalSpeed = (float)java.lang.Math.sqrt(vx * vx + vz * vz);
+	float horizontalSpeed = (float)Math.sqrt(vx * vx + vz * vz);
 	isMoving = horizontalSpeed > 0.05f;
 
 	if (playerS != null)
@@ -1394,12 +1456,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         overheadCameraController.applyTo(camOver, playerpos);
 
-        engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
-        engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
-        engine.getHUDmanager().setHUD3(
-            String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
-            new Vector3f(1, 1, 1), 15, 15
-        );
+        if (gameState == GameState.BETWEEN_WAVES)
+        {
+            shopState.renderBetweenWaveHud(engine, pHealth, playerCredits);
+        }
+        else
+        {
+            engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
+            engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
+            engine.getHUDmanager().setHUD3(
+                String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
+                new Vector3f(1, 1, 1), 15, 15
+            );
+        }
 
         pickupManager.update(dt, terr);
     }
@@ -1445,6 +1514,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+                            ufoWaveManager.startNextWave();
                             break;
                         case SELECT_MAP:
                             menu.nextMap();
@@ -1472,13 +1542,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             }
         }
 
-        if (gameState == GameState.PLAYING)
+        if (gameState == GameState.PLAYING || gameState == GameState.BETWEEN_WAVES)
         {
             switch (e.getKeyCode())
             {
                 case KeyEvent.VK_ESCAPE:
                     gameState = GameState.PAUSED;
-                    engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
                     break;
                 case KeyEvent.VK_R:
                     weaponInventory.beginReload();
@@ -1487,9 +1556,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     restartGame = new RestartGame(this);
                     restartGame.performAction(0, null);
                     break;
+                case KeyEvent.VK_E:
+                    gameState = shopState.handleWorldKey(e.getKeyCode(), gameState, player, playerP, currentMoveDir);
+                    break;
                 default:
                     break;
             }
+        }
+        else if (gameState == GameState.SHOP)
+        {
+            gameState = shopState.handleShopKey(e.getKeyCode(), gameState, this, weaponInventory);
+        }
+        else if (gameState == GameState.PAUSED)
+        {
+            if (e.getKeyCode() == KeyEvent.VK_ESCAPE)
+                gameState = shopState.getResumeState();
         }
 
         super.keyPressed(e);
@@ -1682,7 +1763,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             case PLASMA_RIFLE:
                 if (weaponInventory.isPlasmaBurstMode())
                 {
-                    int burstCount = java.lang.Math.min(3, weaponInventory.getCurrentMagazineAmmo());
+                    int burstCount = Math.min(3, weaponInventory.getCurrentMagazineAmmo());
                     for (int i = 0; i < burstCount; i++)
                     {
                     bulletManager.spawnPlayerBullet(spawnPos, forward, true);
@@ -1708,9 +1789,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 for (int i = 0; i < shotgunPelletCount; i++)
                 {
                     Vector3f spreadDir = new Vector3f(forward).add(
-                        ((float)Math.random() - 0.5f) * shotgunSpread,
-                        ((float)Math.random() - 0.5f) * shotgunSpread,
-                        ((float)Math.random() - 0.5f) * shotgunSpread
+                        (random.nextFloat() - 0.5f) * shotgunSpread,
+                        (random.nextFloat() - 0.5f) * shotgunSpread,
+                        (random.nextFloat() - 0.5f) * shotgunSpread
                     ).normalize();
 
                 bulletManager.spawnPlayerBullet(spawnPos, spreadDir, false);
@@ -1812,6 +1893,43 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 terr.getRenderStates().setTileFactor(10);
                 break;
         }
+
+        if (physicsEngine != null)
+            terrainPhysicsRefreshPending = true;
+    }
+
+    private void rebuildTerrainPhysicsObject()
+    {
+        if (physicsEngine == null || terr == null) return;
+
+        if (terrainP != null)
+        {
+            engine.getSceneGraph().removePhysicsObject(terrainP);
+            terrainP = null;
+        }
+
+        Vector3f loc = terr.getWorldLocation();
+        Quaternionf rot = new Quaternionf();
+        terr.getWorldRotation().getNormalizedRotation(rot);
+
+        TextureImage activeHeightMap = (mapSelection == 1) ? heightMap1 : heightMap0;
+
+        terrainP = engine.getSceneGraph().addPhysicsStaticTerrainMesh(
+            loc, rot, activeHeightMap, 100.0f, 50.0f, 100
+        );
+        terrainP.setBounciness(0.0f);
+        terrainP.setFriction(1.0f);
+        terrainP.disableSleeping();
+        terr.setPhysicsObject(terrainP);
+    }
+
+    private void refreshTerrainPhysicsIfNeeded()
+    {
+        if (!terrainPhysicsRefreshPending) return;
+
+        terrainPhysicsRefreshPending = false;
+        rebuildTerrainPhysicsObject();
+        placePlayerAtTerrainStart();
     }
 
     // ========================================================
@@ -1836,13 +1954,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     }
     public void setPlayerHealth(int value)
     {
-        pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
+        pHealth = Math.max(pHealthMin, Math.min(value, pHealthMax));
     }
     public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
     public int getPlayerHealth() { return pHealth; }
     public int getPlayerHealthMax() { return pHealthMax; }
     public int getPlayerAmmo() { return weaponInventory.getTotalAmmo(); }
     public void addPlayerCredits(int amount) { playerCredits += amount; }
+    public boolean spendPlayerCredits(int amount)
+    {
+        if (amount <= 0) return true;
+        if (playerCredits < amount) return false;
+
+        playerCredits -= amount;
+        return true;
+    }
     public int getPlayerCredits() { return playerCredits; }
 
     // --- Networking & Multiplayer ---

@@ -1,4 +1,4 @@
-package bullet;
+package bullet.audio;
 
 import org.joml.Vector3f;
 import tage.Camera;

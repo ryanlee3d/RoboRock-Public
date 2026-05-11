@@ -1,4 +1,4 @@
-package bullet;
+package bullet.combat;
 
 public enum WeaponType
 {

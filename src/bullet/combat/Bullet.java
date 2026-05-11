@@ -1,4 +1,4 @@
-package bullet;
+package bullet.combat;
 
 import tage.GameObject;
 import tage.physics.PhysicsObject;

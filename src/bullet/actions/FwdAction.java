@@ -1,19 +1,20 @@
-package bullet;
+package bullet.actions;
 
 import tage.input.action.AbstractInputAction;
 import net.java.games.input.Event;
 import org.joml.*;
 import tage.Camera;
+import bullet.MyGame;
 
-public class StrafeAction extends AbstractInputAction
+public class FwdAction extends AbstractInputAction
 {
     private MyGame game;
     private Camera cam;
-    private float direction, x;
+    private float direction, z;
 
     private static final float MOVE_SPEED = 8.0f;
 
-    public StrafeAction(MyGame g, float dir, Camera c)
+    public FwdAction(MyGame g, float dir, Camera c)
     {
         game = g;
         direction = dir;
@@ -23,8 +24,8 @@ public class StrafeAction extends AbstractInputAction
     @Override
     public void performAction(float time, Event e)
     {
-        x = e.getValue();
-        if (x > -0.2f && x < 0.2f)
+        z = e.getValue();
+        if (z > -0.2f && z < 0.2f)
         {
             game.stopPlayerHorizontalMotion();
             return;
@@ -36,12 +37,10 @@ public class StrafeAction extends AbstractInputAction
         if (forward.lengthSquared() < 0.000001f) return;
         forward.normalize();
 
-        Vector3f right = new Vector3f(forward.z, 0f, -forward.x);
-        right.normalize();
+        // flip sign as needed for your camera convention
+        forward.mul(-direction * z);
 
-        right.mul(direction * x);
-
-        game.movePlayerPhysics(right, MOVE_SPEED);
+        game.movePlayerPhysics(forward, MOVE_SPEED);
 
         if (game.getProtocolClient() != null && game.getAvatar() != null)
             game.getProtocolClient().sendMoveMessage(game.getAvatar().getWorldLocation());

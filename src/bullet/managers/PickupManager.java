@@ -1,4 +1,4 @@
-package bullet;
+package bullet.managers;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -7,6 +7,9 @@ import tage.GameObject;
 import tage.Light;
 import tage.ObjShape;
 import tage.TextureImage;
+import bullet.MyGame;
+import bullet.audio.GameAudio;
+import bullet.combat.WeaponInventory;
 
 public class PickupManager
 {

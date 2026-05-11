@@ -1,4 +1,4 @@
-package bullet;
+package bullet.camera;
 
 import net.java.games.input.Event;
 import org.joml.Vector3f;

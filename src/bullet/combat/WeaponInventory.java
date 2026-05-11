@@ -1,4 +1,4 @@
-package bullet;
+package bullet.combat;
 
 public class WeaponInventory
 {
@@ -174,7 +174,7 @@ public class WeaponInventory
             getCurrentMagazineAmmo() + "/" + getCurrentReserveAmmo() + modeText + status;
     }
 
-    private void addReserveAmmo(WeaponType weapon, int amount)
+    public void addReserveAmmo(WeaponType weapon, int amount)
     {
         if (!weapon.usesBullets() || amount <= 0) return;
 

@@ -1,4 +1,4 @@
-package bullet;
+package bullet.managers;
 
 import java.util.function.Consumer;
 import org.joml.Matrix4f;
@@ -61,16 +61,23 @@ public class UfoWaveManager
         return active;
     }
 
+    public void reset()
+    {
+        currentWave = 0;
+        active = false;
+        waveDropFinished = false;
+    }
+
     public void startNextWave()
     {
-        if (currentWave < UFO_DROP_POSITIONS.length)
-        {
-            spawnWave(UFO_DROP_POSITIONS[currentWave], 5);
-        }
-        else if (currentWave == UFO_DROP_POSITIONS.length)
-        {
-            spawnWave(LARGE_UFO_DROP_POSITION, 10);
-        }
+        int maxWaves = UFO_DROP_POSITIONS.length;
+        int dropIndex = currentWave % maxWaves;
+        int apeCount = 5 + (currentWave * 2); // Scale difficulty with wave number
+
+        if ((currentWave + 1) % 5 == 0) // Boss wave every 5th wave
+            spawnWave(LARGE_UFO_DROP_POSITION, apeCount + 5, true);
+        else
+            spawnWave(UFO_DROP_POSITIONS[dropIndex], apeCount, false);
 
         currentWave++;
     }
@@ -99,10 +106,11 @@ public class UfoWaveManager
             dropApes(activeUfoTarget, activeUfoDropCount);
             waveDropFinished = true;
             active = false;
+            activeUfo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
         }
     }
 
-    private void spawnWave(Vector3f pos, int apeCount)
+    private void spawnWave(Vector3f pos, int apeCount, boolean isLarge)
     {
         active = true;
         waveDropFinished = false;
@@ -110,7 +118,8 @@ public class UfoWaveManager
         activeUfoTravelTime = 0.0f;
         activeUfoDropCount = apeCount;
 
-        activeUfo = (apeCount == 10) ? largeUfo : ufos[currentWave];
+        activeUfo = isLarge ? largeUfo : ufos[currentWave % ufos.length];
+        activeUfo.setLocalScale(new Matrix4f().scaling(isLarge ? 0.25f : 0.05f));
         activeUfoStart.set(getStartPosition(pos));
         activeUfo.setLocalTranslation(new Matrix4f().translation(activeUfoStart));
     }
