@@ -22,8 +22,16 @@ public class GameAudio
     private Sound plasmaRifleSound;
     private Sound shotgunShotSound;
     private Sound shotgunPumpSound;
-    private Sound apePlasmaSound;
+    private Sound npcPlasmaSound;
+    private float npcPlasmaSoundTimer = 0.0f;
+    private final float npcPlasmaSoundCooldown = 0.15f;
     private Sound apeDieSound;
+    private Sound alienDieSound;
+    private Sound roarSound;
+    private Sound level1Music;
+    private Sound level2Music;
+    private Sound bossMusic;
+    private Sound currentMusic;
 
     private float shotgunPumpTimer = 0.0f;
 
@@ -43,29 +51,42 @@ public class GameAudio
         AudioResource plasmaRes = audioMgr.createAudioResource("plasmaRifle.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource shotgunRes = audioMgr.createAudioResource("shotGun.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource pumpRes = audioMgr.createAudioResource("sgPump.wav", AudioResourceType.AUDIO_SAMPLE);
-        AudioResource apePlasmaRes = audioMgr.createAudioResource("apePlasma.wav", AudioResourceType.AUDIO_SAMPLE);
+        AudioResource npcPlasmaRes = audioMgr.createAudioResource("npcPlasma.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource apeDieRes = audioMgr.createAudioResource("apeDie.wav", AudioResourceType.AUDIO_SAMPLE);
+        AudioResource roarRes = audioMgr.createAudioResource("roar.wav", AudioResourceType.AUDIO_SAMPLE);
+        AudioResource alienDieRes = audioMgr.createAudioResource("alienDie.wav", AudioResourceType.AUDIO_SAMPLE);
+        AudioResource level1MusicRes = audioMgr.createAudioResource("level1.wav", AudioResourceType.AUDIO_STREAM);
+        AudioResource level2MusicRes = audioMgr.createAudioResource("level2.wav", AudioResourceType.AUDIO_STREAM);
+        AudioResource bossMusicRes = audioMgr.createAudioResource("boss.wav", AudioResourceType.AUDIO_STREAM);
 
-        healthPickupSound = createSound(healthRes, 50, false);
-        ammoPickupSound = createSound(ammoRes, 50, false);
-        pistolShotSound = createSound(pistolRes, 50, false);
-        rifleShotSound = createSound(rifleRes, 50, true);
-        plasmaRifleSound = createSound(plasmaRes, 50, false);
-        shotgunShotSound = createSound(shotgunRes, 50, false);
-        shotgunPumpSound = createSound(pumpRes, 50, false);
-        apePlasmaSound = createSound(apePlasmaRes, 50, false);
-        apeDieSound = createSound(apeDieRes, 200, false);
+        healthPickupSound = createSound(healthRes, 100, false);
+        ammoPickupSound = createSound(ammoRes, 100, false);
+        pistolShotSound = createSound(pistolRes, 10, false);
+        rifleShotSound = createSound(rifleRes, 100, true);
+        plasmaRifleSound = createSound(plasmaRes, 10, false);
+        shotgunShotSound = createSound(shotgunRes, 10, false);
+        shotgunPumpSound = createSound(pumpRes, 10, false);
+        npcPlasmaSound = createSound(npcPlasmaRes, 80, false);
+        apeDieSound = createSound(apeDieRes, 80, false);
+        alienDieSound = createSound(alienDieRes, 30, false);
+        roarSound = createSound(roarRes, 100, false);
+        level1Music = createMusic(level1MusicRes, 100, true);
+        level2Music = createMusic(level2MusicRes, 100, true);
+        bossMusic = createMusic(bossMusicRes, 100, true);
 
         configure3DSound(healthPickupSound, 20.0f, 0.5f, 2.0f);
         configure3DSound(ammoPickupSound, 20.0f, 0.5f, 2.0f);
-        configure3DSound(apePlasmaSound, 35.0f, 1.0f, 2.0f);
+        configure3DSound(npcPlasmaSound, 120.0f, 1.0f, 0.7f);
         configure3DSound(apeDieSound, 35.0f, 1.0f, 2.0f);
+        configure3DSound(alienDieSound, 35.0f, 1.0f, 2.0f);
+        
     }
 
     public void releaseAll()
     {
         if (audioMgr == null) return;
-
+        stopMusic();
+        stopRifleLoopSound();
         release(healthPickupSound);
         release(ammoPickupSound);
         release(pistolShotSound);
@@ -73,8 +94,13 @@ public class GameAudio
         release(plasmaRifleSound);
         release(shotgunShotSound);
         release(shotgunPumpSound);
-        release(apePlasmaSound);
+        release(npcPlasmaSound);
         release(apeDieSound);
+        release(alienDieSound);
+        release(roarSound);
+        release(level1Music);
+        release(level2Music);
+        release(bossMusic);
     }
 
     public void setEarParameters(GameObject player, Camera cam)
@@ -99,6 +125,14 @@ public class GameAudio
 
     public void updateWeaponAudio(float dt)
     {
+        if (npcPlasmaSoundTimer > 0.0f)
+        {
+            npcPlasmaSoundTimer -= dt;
+
+            if (npcPlasmaSoundTimer < 0.0f)
+                npcPlasmaSoundTimer = 0.0f;
+        }
+
         if (shotgunPumpTimer > 0.0f)
         {
             float previous = shotgunPumpTimer;
@@ -149,27 +183,91 @@ public class GameAudio
             rifleShotSound.stop();
     }
 
-    public void playApePlasma(Vector3f location)
+    public void playNpcPlasma(Vector3f location)
     {
-        if (apePlasmaSound == null) return;
+        if (npcPlasmaSoundTimer > 0.0f)
+            return;
 
-        apePlasmaSound.setLocation(location);
-        apePlasmaSound.play();
+        playAt(npcPlasmaSound, location);
+        npcPlasmaSoundTimer = npcPlasmaSoundCooldown;
     }
 
     public void playApeDie(Vector3f location)
     {
-        if (apeDieSound == null) return;
+        playAt(apeDieSound, location);
+    }
 
-        apeDieSound.setLocation(location);
-        apeDieSound.play();
+    public void playAlienDie(Vector3f location)
+    {
+        playAt(alienDieSound, location);
+    }
+
+    public void playRoar()
+    {
+        if (roarSound == null) return;
+
+        if (roarSound.getIsPlaying())
+            roarSound.stop();
+
+        roarSound.play();
+    }
+
+    public void playLevel1Music()
+    {
+        playMusic(level1Music);
+    }
+
+    public void playLevel2Music()
+    {
+        playMusic(level2Music);
+    }
+
+    public void playBossMusic()
+    {
+        playMusic(bossMusic);
+    }
+
+    public void stopMusic()
+    {
+        if (currentMusic != null && currentMusic.getIsPlaying())
+            currentMusic.stop();
+
+        currentMusic = null;
+    }
+
+    private void playMusic(Sound music)
+    {
+        if (music == null)
+        {
+            System.out.println("Music failed: Sound is null");
+            return;
+        }
+
+        if (currentMusic == music && music.getIsPlaying())
+            return;
+
+        stopMusic();
+
+        currentMusic = music;
+        currentMusic.play();
     }
 
     private Sound createSound(AudioResource resource, int volume, boolean loop)
     {
-        if (audioMgr == null || resource == null) return null;
+        return createSound(resource, SoundType.SOUND_EFFECT, volume, loop);
+    }
 
-        Sound sound = new Sound(resource, SoundType.SOUND_EFFECT, volume, loop);
+    private Sound createMusic(AudioResource resource, int volume, boolean loop)
+    {
+        return createSound(resource, SoundType.SOUND_MUSIC, volume, loop);
+    }
+
+    private Sound createSound(AudioResource resource, SoundType type, int volume, boolean loop)
+    {
+        if (audioMgr == null || resource == null)
+            return null;
+
+        Sound sound = new Sound(resource, type, volume, loop);
         sound.initialize(audioMgr);
         return sound;
     }
@@ -186,11 +284,15 @@ public class GameAudio
             sound.play();
     }
 
-            private void playAt(Sound sound, Vector3f location)
+    private void playAt(Sound sound, Vector3f location)
     {
         if (sound == null || location == null) return;
 
         sound.setLocation(location);
+
+        if (sound.getIsPlaying())
+            sound.stop();
+
         sound.play();
     }
 

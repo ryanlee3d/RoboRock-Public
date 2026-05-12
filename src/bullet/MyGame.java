@@ -155,6 +155,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int mapSelection = 0;
     private boolean pendingSkinnySpawn = false;
     private boolean pendingCaseOneStart = false;
+    private boolean pendingDebugFinalUfoBeam = false;
 
     //floating brain
     private boolean brainFloating = false;
@@ -223,14 +224,32 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private boolean tractorBeamActive = false;
     private boolean playerInTractorBeam = false;
     private Light tractorBeamLight;
-    private PhysicsObject tractorBeamP;
-
+    // gameplay-only tractor beam: no physics collider, just X/Z distance + wave completion logic
     private Vector3f tractorBeamCenter = new Vector3f(0.0f, 0.0f, 0.0f);
 
     private final float tractorBeamRadius = 5.0f;
     private final float tractorBeamHeight = 35.0f;
     private final float tractorBeamLiftSpeed = 8.0f;
     private float tractorBeamTopY = 35.0f;
+
+    // Level two
+    private boolean levelTwoArrivalEventPending = false;
+    private float levelTwoArrivalTimer = 0.0f;
+    private float levelTwoThrowControlTimer = 0.0f;
+
+    private final float levelTwoArrivalDelay = 1.0f;
+    private final float levelTwoThrowBackSpeed = 30.0f;
+    private final float levelTwoThrowUpSpeed = 6.0f;
+    private final float levelTwoThrowControlDuration = 1.0f;
+
+    private final Vector3f levelTwoThrowDir = new Vector3f(0.0f, 0.0f, 1.0f);
+    // Background music control
+    private boolean levelTwoMusicPending = false;
+    private float levelTwoMusicTimer = 0.0f;
+    private final float levelTwoMusicDelay = 2.0f; // 1 sec to roar, then 1 sec after roar
+    private boolean bossMusicStarted = false;
+
+
 
     private final float worldGravity = -9.8f;
     private final float shotgunSpread = 0.12f;
@@ -240,7 +259,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         super();
         gm = new GhostManager(this);
-        ufoWaveManager = new UfoWaveManager(this::spawnApe);
+        ufoWaveManager = new UfoWaveManager(this::spawnApe, this::getPlayerPosition);
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
         serverProtocol = protocol.toUpperCase().compareTo("TCP") == 0 ? ProtocolType.TCP : ProtocolType.UDP;
@@ -508,6 +527,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 .rotationX((float)Math.toRadians(90.0f))
                 .rotateZ((float)Math.toRadians(180.0f))
         );
+
+        if (apeS != null)
+            apeS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);        
 
         newApe.setLocalTranslation(new Matrix4f().translation(
             spawnPos.x, spawnPos.y, spawnPos.z));
@@ -808,7 +830,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 spawnEnemyBullet(muzzlePos, fireDir, true);
 
-                gameAudio.playApePlasma(muzzlePos);
+                gameAudio.playNpcPlasma(muzzlePos);
 
                 fireCd = 1.25f;
             }
@@ -1027,7 +1049,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             spawnEnemyBullet(muzzlePos, fireDir, true);
 
-            gameAudio.playApePlasma(muzzlePos);
+            gameAudio.playNpcPlasma(muzzlePos);
 
             fireCd = 1.5f;
         }
@@ -1160,6 +1182,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             brainCircleDir = 1.0f;
             brainRushing = false;
         }
+
+        gameAudio.stopMusic();
+
+        levelTwoMusicPending = true;
+        levelTwoMusicTimer = levelTwoMusicDelay;
+        bossMusicStarted = false;
+
+        scheduleLevelTwoArrivalEvent();
     }
 
     private void updateBrainAnimation()
@@ -1175,11 +1205,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             brainFloating = true;
 
             brainActive = true;
+            startBossMusic();
             brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
             brainCircleAngle = 0.0f;
             brainCircleDir = 1.0f;
             brainRushing = false;
         }
+    }
+
+    private void startBossMusic()
+    {
+        if (bossMusicStarted)
+            return;
+
+        bossMusicStarted = true;
+        levelTwoMusicPending = false;
+
+        gameAudio.playBossMusic();
     }
 
     private void updateBrainBoss(float dt)
@@ -1304,7 +1346,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
 
         spawnEnemyBullet(muzzle, dir, true);
-        gameAudio.playApePlasma(muzzle);
+        gameAudio.playNpcPlasma(muzzle);
     }
 
     private void brainRandomShot()
@@ -1323,7 +1365,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
 
         spawnEnemyBullet(muzzle, dir, true);
-        gameAudio.playApePlasma(muzzle);
+        gameAudio.playNpcPlasma(muzzle);
     }
 
     private void brainSquareBurst()
@@ -1355,7 +1397,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             }
         }
 
-        gameAudio.playApePlasma(brainPos);
+        gameAudio.playNpcPlasma(brainPos);
     }
 
     private void updateBrainRush(float dt)
@@ -1495,8 +1537,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         centerBuilding = new GameObject(GameObject.root(), centerBuildingS, centerBuildingTx);
         centerBuilding.setLocalTranslation(new Matrix4f().translation(0.0f, 0.0f, 0.0f));
-        centerBuilding.setLocalScale(new Matrix4f().scaling(1.5f));
-
+        centerBuilding.setLocalScale(new Matrix4f().scaling(4.0f));
+        centerBuilding.getRenderStates().setModelOrientationCorrection(new Matrix4f().rotationX((float)Math.toRadians(90.0f)));
         float[][] sbPositions = {
             {-52.0f, 72.0f}, {48.0f, -65.0f}, {79.0f, -21.0f}, {-83.0f, 39.0f},
             {-18.0f, 40.0f}, {20.0f, -38.0f}, {24.0f, 5.0f}, {28.0f, 38.0f}
@@ -1596,6 +1638,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private void initAudio()
     {
         gameAudio.initialize(engine);
+        gameAudio.playLevel1Music();
     }
 
     private void setEarParameters()
@@ -1796,6 +1839,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
         elapsTime += dt;
 
+        if (pendingDebugFinalUfoBeam)
+        {
+            pendingDebugFinalUfoBeam = false;
+            debugStartFinalUfoBeam();
+        }
+
         if (pendingCaseOneStart)
         {
             setupCaseOneStart();
@@ -1814,21 +1863,33 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         currentMoveDir.set(0, 0, 0);
         im.update(dt);
 
+        updateLevelTwoArrivalEvent(dt);
+
+        updateLevelTwoMusic(dt);
+
         if (playerP != null)
         {
-            float[] vel = playerP.getLinearVelocity();
-            if (currentMoveDir.lengthSquared() > 0.0001f)
+            // While the tractor beam owns the player, do not let WASD overwrite
+            // the upward beam velocity or add horizontal drift.
+            boolean beamControllingPlayer = tractorBeamActive && playerInTractorBeam;
+            boolean levelTwoThrowControllingPlayer = levelTwoThrowControlTimer > 0.0f;
+
+            if (!beamControllingPlayer && !levelTwoThrowControllingPlayer)
             {
-                currentMoveDir.normalize();
-                playerP.setLinearVelocity(new float[] {
-                    currentMoveDir.x * currentMoveSpeed,
-                    vel[1], // Preserve Y velocity for gravity/falling
-                    currentMoveDir.z * currentMoveSpeed
-                });
-            }
-            else
-            {
-                playerP.setLinearVelocity(new float[] { 0f, vel[1], 0f });
+                float[] vel = playerP.getLinearVelocity();
+                if (currentMoveDir.lengthSquared() > 0.0001f)
+                {
+                    currentMoveDir.normalize();
+                    playerP.setLinearVelocity(new float[] {
+                        currentMoveDir.x * currentMoveSpeed,
+                        vel[1], // Preserve Y velocity for gravity/falling
+                        currentMoveDir.z * currentMoveSpeed
+                    });
+                }
+                else
+                {
+                    playerP.setLinearVelocity(new float[] { 0f, vel[1], 0f });
+                }
             }
         }
 
@@ -1865,7 +1926,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         updateSkinnysFromPhysics();
 
-        ufoWaveManager.update(dt);
+        if (mapSelection == 0)
+        {
+            ufoWaveManager.update(dt);
+        }
 
         updateDeadApes(dt);
 
@@ -1973,8 +2037,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
         engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
+        String hud3Text = String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z);
+
+        if (physicsDebug || tractorBeamActive)
+            hud3Text += " | " + getTractorBeamDebugText(playerpos);
+
         engine.getHUDmanager().setHUD3(
-            String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
+            hud3Text,
             new Vector3f(1, 1, 1), 15, 15
         );
         if (brainActive && brainHealth > 0)
@@ -2090,10 +2159,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     break;
                 // DEBUG KEYS
                 case KeyEvent.VK_T:
-                    debugStartFinalUfoBeam();
+                    pendingDebugFinalUfoBeam = true;
+                    System.out.println("DEBUG: queued final UFO beam test");
                     break;
                 case KeyEvent.VK_Y:
                     spawnDebugSkinnyLoadout();
+                    break;
+                case KeyEvent.VK_U:
+                    debugStartLevelTwoArrivalEvent();
                     break;
                 default:
                     break;
@@ -2397,6 +2470,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     activeSkinnyDead.set(i, true);
                     skinnyKillCount++;
 
+                    gameAudio.playAlienDie(s.getWorldLocation());
+
                     if (skinnyKillCount % 10 == 0)
                     {
                         dropGrapplePickup(s.getWorldLocation());
@@ -2596,6 +2671,81 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void scheduleLevelTwoArrivalEvent()
+    {
+        levelTwoArrivalEventPending = true;
+        levelTwoArrivalTimer = levelTwoArrivalDelay;
+        levelTwoThrowControlTimer = 0.0f;
+
+        System.out.println("Level two arrival event scheduled: roar/throwback in 1 second");
+    }
+
+    private void updateLevelTwoArrivalEvent(float dt)
+    {
+        if (levelTwoThrowControlTimer > 0.0f)
+        {
+            levelTwoThrowControlTimer -= dt;
+
+            if (levelTwoThrowControlTimer < 0.0f)
+                levelTwoThrowControlTimer = 0.0f;
+        }
+
+        if (!levelTwoArrivalEventPending)
+            return;
+
+        levelTwoArrivalTimer -= dt;
+
+        if (levelTwoArrivalTimer <= 0.0f)
+            triggerLevelTwoArrivalEvent();
+    }
+    
+    private void updateLevelTwoMusic(float dt)
+    {
+        if (!levelTwoMusicPending)
+            return;
+
+        levelTwoMusicTimer -= dt;
+
+        if (levelTwoMusicTimer <= 0.0f)
+        {
+            levelTwoMusicPending = false;
+
+            if (!bossMusicStarted)
+                gameAudio.playLevel2Music();
+        }
+    }
+
+    private void triggerLevelTwoArrivalEvent()
+    {
+        levelTwoArrivalEventPending = false;
+
+        gameAudio.playRoar();
+        throwPlayerBackFromLevelTwoSpawn();
+
+        System.out.println("Level two arrival event fired: TAGE roar + throwback");
+    }
+
+    private void throwPlayerBackFromLevelTwoSpawn()
+    {
+        if (playerP == null)
+            return;
+
+        Vector3f throwDir = new Vector3f(levelTwoThrowDir);
+
+        if (throwDir.lengthSquared() < 0.0001f)
+            throwDir.set(0.0f, 0.0f, 1.0f);
+        else
+            throwDir.normalize();
+
+        playerP.setLinearVelocity(new float[] {
+            throwDir.x * levelTwoThrowBackSpeed,
+            levelTwoThrowUpSpeed,
+            throwDir.z * levelTwoThrowBackSpeed
+        });
+
+        levelTwoThrowControlTimer = levelTwoThrowControlDuration;
+    }
+
     private void startTractorBeam()
     {
         if (tractorBeamActive) return;
@@ -2620,21 +2770,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             tractorBeamLight.enable();
         }
 
-        if (tractorBeamP == null && physicsEngine != null)
-        {
-            tractorBeamP = engine.getSceneGraph().addPhysicsCylinder(
-                0.0f,
-                tractorBeamCenter,
-                new Quaternionf(),
-                1,
-                tractorBeamRadius,
-                tractorBeamHeight / 2.0f
-            );
-
-            tractorBeamP.disableSleeping();
-        }
-
-        System.out.println("Tractor beam active from large UFO");
+        System.out.println("Tractor beam active from large UFO (gameplay trigger, no physics collider)");
     }
 
     private void updateTractorBeam(float dt)
@@ -2648,15 +2784,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dz = playerPos.z - tractorBeamCenter.z;
         float horizontalDist = (float)Math.sqrt(dx * dx + dz * dz);
 
-        boolean insideBeam =
-            horizontalDist <= tractorBeamRadius &&
-            playerPos.y >= 0.0f &&
-            playerPos.y <= tractorBeamTopY;
+        // Pure gameplay trigger: no cylinder/collider.
+        // The player is considered captured if their X/Z position is under the large UFO
+        // after the final wave has enabled the beam.
+        boolean underLargeUfo = horizontalDist <= tractorBeamRadius;
+        boolean belowUfo = playerPos.y <= tractorBeamTopY;
 
-        if (insideBeam)
+        if (underLargeUfo && belowUfo)
         {
             playerInTractorBeam = true;
 
+            // Center the lift so the player cannot fight the beam with movement input.
             playerP.setLinearVelocity(new float[] {
                 0.0f,
                 tractorBeamLiftSpeed,
@@ -2670,6 +2808,24 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             playerInTractorBeam = false;
         }
+    }
+
+    private String getTractorBeamDebugText(Vector3f playerPos)
+    {
+        if (!tractorBeamActive)
+            return "Beam: OFF";
+
+        float dx = playerPos.x - tractorBeamCenter.x;
+        float dz = playerPos.z - tractorBeamCenter.z;
+        float horizontalDist = (float)Math.sqrt(dx * dx + dz * dz);
+
+        return String.format(
+            "Beam: ACTIVE | Under UFO: %s | Dist: %.2f/%.2f | TopY: %.2f",
+            playerInTractorBeam ? "YES" : "NO",
+            horizontalDist,
+            tractorBeamRadius,
+            tractorBeamTopY
+        );
     }
 
     private void applyMapSelection()
@@ -2737,6 +2893,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         buildingPhysics.clear();
     }
 
+    private void hideLevelZeroUfos()
+    {
+        if (ufoWaveManager != null)
+            ufoWaveManager.hideAllUfos();
+    }
+
     private void swapToCaseOneTerrain()
     {
         tractorBeamActive = false;
@@ -2745,13 +2907,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (tractorBeamLight != null)
             tractorBeamLight.disable();
 
-        if (tractorBeamP != null && physicsEngine != null)
-        {
-            physicsEngine.removeObject(tractorBeamP.getUID());
-            tractorBeamP = null;
-        }
-
         hideMapZeroBuildings();
+        hideLevelZeroUfos();
 
         mapSelection = 1;
         applyMapSelection();
@@ -2805,7 +2962,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     //DEBUGGING
     private void debugStartFinalUfoBeam()
     {
+        if (terr == null || playerP == null || ufoWaveManager == null)
+        {
+            System.out.println("DEBUG: cannot start UFO beam test yet; missing terrain/player physics/UFO manager");
+            return;
+        }
+
         mapSelection = 0;
+        applyMapSelection();
+        switchTerrainPhysics();
 
         // remove any active apes so final condition is clean
         for (int i = activeApes.size() - 1; i >= 0; i--)
@@ -2819,15 +2984,27 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float y = terr.getHeight(beamPos.x, beamPos.z) + playerVisualYOffset + 1.0f;
 
         playerP.setLocation(new float[] {
-            beamPos.x + 1.0f,
+            beamPos.x,
             y,
-            beamPos.z + 1.0f
+            beamPos.z
         });
 
         playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
 
-        System.out.println("DEBUG: player moved near tractor beam");
+        System.out.println("DEBUG: player moved under gameplay tractor beam");
     }
+    private void debugStartLevelTwoArrivalEvent()
+    {
+        mapSelection = 1;
+        applyMapSelection();
+        switchTerrainPhysics();
+        hideMapZeroBuildings();
+
+        setupCaseOneStart();
+
+        System.out.println("DEBUG: forced level two arrival event");
+    }
+
     private void spawnDebugSkinnyLoadout()
     {
         if (player == null || skinnyS == null || plasmaRifleS == null || grappleGunS == null)
