@@ -1,3 +1,4 @@
+// UNIQUE PATCHED COPY: player death sound support, generated 2026-05-12
 package bullet;
 
 import org.joml.Vector3f;
@@ -27,6 +28,7 @@ public class GameAudio
     private final float npcPlasmaSoundCooldown = 0.15f;
     private Sound apeDieSound;
     private Sound alienDieSound;
+    private Sound playerDieSound;
     private Sound roarSound;
     private Sound level1Music;
     private Sound level2Music;
@@ -55,6 +57,7 @@ public class GameAudio
         AudioResource apeDieRes = audioMgr.createAudioResource("apeDie.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource roarRes = audioMgr.createAudioResource("roar.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource alienDieRes = audioMgr.createAudioResource("alienDie.wav", AudioResourceType.AUDIO_SAMPLE);
+        AudioResource playerDieRes = audioMgr.createAudioResource("die.wav", AudioResourceType.AUDIO_SAMPLE);
         AudioResource level1MusicRes = audioMgr.createAudioResource("level1.wav", AudioResourceType.AUDIO_STREAM);
         AudioResource level2MusicRes = audioMgr.createAudioResource("level2.wav", AudioResourceType.AUDIO_STREAM);
         AudioResource bossMusicRes = audioMgr.createAudioResource("boss.wav", AudioResourceType.AUDIO_STREAM);
@@ -69,6 +72,7 @@ public class GameAudio
         npcPlasmaSound = createSound(npcPlasmaRes, 80, false);
         apeDieSound = createSound(apeDieRes, 80, false);
         alienDieSound = createSound(alienDieRes, 30, false);
+        playerDieSound = createSound(playerDieRes, 100, false);
         roarSound = createSound(roarRes, 100, false);
         level1Music = createMusic(level1MusicRes, 100, true);
         level2Music = createMusic(level2MusicRes, 100, true);
@@ -97,6 +101,7 @@ public class GameAudio
         release(npcPlasmaSound);
         release(apeDieSound);
         release(alienDieSound);
+        release(playerDieSound);
         release(roarSound);
         release(level1Music);
         release(level2Music);
@@ -200,6 +205,18 @@ public class GameAudio
     public void playAlienDie(Vector3f location)
     {
         playAt(alienDieSound, location);
+    }
+
+    public void playPlayerDie(Vector3f location)
+    {
+        if (playerDieSound != null)
+        {
+            playerDieSound.play();
+        }
+        else
+        {
+            System.out.println("Player death sound missing");
+        }
     }
 
     public void playRoar()

@@ -1,3 +1,4 @@
+// UNIQUE PATCHED COPY: death continue HUD + player death sound, generated 2026-05-12
 package bullet;
 
 import tage.*;
@@ -70,6 +71,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // player stats
     private int pHealth = 100;
+    private boolean playerDeathScreenActive = false;
 
     private final int pHealthMin = 0;
     private final int pHealthMax = 150;
@@ -116,7 +118,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     //grapple gun
     private GameObject grapplePickup;
     private boolean grapplePickupActive = false;
-    private boolean playerHasGrapple = true; // true for testing
+    private boolean playerHasGrapple = false;
     private boolean playerGrappling = false;
     private float grappleTimer = 0.0f;
     private final float grappleDuration = 0.75f;
@@ -159,6 +161,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     //floating brain
     private boolean brainFloating = false;
+
+    // objective HUD state
+    private boolean playerKnockedOffLevelTwo = false;
+    private boolean brainDefeated = false;
 
     // brain boss AI
     private boolean brainActive = false;
@@ -884,6 +890,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             new Matrix4f().rotationX((float)Math.toRadians(45.0f))
         );
 
+        /*
+        // Alien grapple lines were too visually messy, so this is disabled.
+        // The player grapple line still uses skinnyGrappleLineS separately.
         GameObject grappleLine = new GameObject(GameObject.root(), skinnyGrappleLineS);
         grappleLine.getRenderStates().setColor(new Vector3f(0.6f, 0.6f, 0.6f));
         grappleLine.setParent(s);
@@ -901,6 +910,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         );
 
         activeSkinnyGrappleLines.add(grappleLine);
+        */
         // store references
         activeSkinnyPlasma.add(plasma);
         activeSkinnyGrapple.add(grapple);
@@ -990,6 +1000,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             timer = 1.5f + (float)Math.random();
         }
 
+        /*
+        // Disabled alien grapple lines; they clutter the screen when many aliens jump.
         float[] vel = p.getLinearVelocity();
 
         if (i < activeSkinnyGrappleLines.size())
@@ -1019,7 +1031,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     line.setLocalScale(new Matrix4f().scaling(0.0001f));
                 }
             }
-        }  
+        }
+        */
         // === SKINNY SHOOTING ===
         float dist = new Vector3f(playerPos).sub(pos).length();
 
@@ -1176,12 +1189,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             brain.setLocalTranslation(new Matrix4f().translation(1.5f, brainY, brainZ));
             brain.setLocalScale(new Matrix4f().scaling(0.1f));
             brainActive = false;
+            brainFloating = false;
+            brainDefeated = false;
             brainHealth = brainMaxHealth;
             brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
             brainCircleAngle = 0.0f;
             brainCircleDir = 1.0f;
             brainRushing = false;
         }
+
+        playerKnockedOffLevelTwo = false;
+        playerHasGrapple = false;
 
         gameAudio.stopMusic();
 
@@ -1839,6 +1857,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
         elapsTime += dt;
 
+        if (playerDeathScreenActive)
+        {
+            showDeathContinueHud();
+            return;
+        }
+
         if (pendingDebugFinalUfoBeam)
         {
             pendingDebugFinalUfoBeam = false;
@@ -1934,6 +1958,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         updateDeadApes(dt);
 
         bulletManager.update(dt);
+
+        if (playerDeathScreenActive)
+        {
+            showDeathContinueHud();
+            return;
+        }
 
         updateTractorBeam(dt);
         
@@ -2037,13 +2067,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
         engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
+
+        /*
+        // Old bottom debug HUD. Re-enable this if you need player position / tractor beam status again.
         String hud3Text = String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z);
 
         if (physicsDebug || tractorBeamActive)
             hud3Text += " | " + getTractorBeamDebugText(playerpos);
+        */
 
         engine.getHUDmanager().setHUD3(
-            hud3Text,
+            getObjectiveHudText(),
             new Vector3f(1, 1, 1), 15, 15
         );
         if (brainActive && brainHealth > 0)
@@ -2066,6 +2100,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     @Override
     public void keyPressed(KeyEvent e)
     {
+        if (playerDeathScreenActive)
+        {
+            if (e.getKeyCode() == KeyEvent.VK_ENTER)
+                continueAfterPlayerDeath();
+
+            return;
+        }
+
         if (gameState == GameState.MENU)
         {
             switch (e.getKeyCode())
@@ -2108,6 +2150,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                                 pendingSkinnySpawn = true;
                             }
                             gameState = GameState.PLAYING;
+                            firstPersonMode = true;
+                            physicsDebug = false;
+                            engine.disablePhysicsWorldRender();
                             engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
                             engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
@@ -2488,12 +2533,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     if (grapple != null)
                         grapple.setLocalScale(new Matrix4f().scaling(0.0001f));
 
+                    /*
+                    // Alien grapple lines are disabled, so there is no line visual to hide here.
                     if (i < activeSkinnyGrappleLines.size())
                     {
                         GameObject line = activeSkinnyGrappleLines.get(i);
                         if (line != null)
                             line.setLocalScale(new Matrix4f().scaling(0.0001f));
                     }
+                    */
 
                     PhysicsObject p = activeSkinnyPhysics.get(i);
                     if (p != null)
@@ -2518,6 +2566,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 brainHealth = 0;
                 brainActive = false;
+                brainDefeated = true;
                 brain.setLocalScale(new Matrix4f().scaling(0.0001f));
                 System.out.println("Brain defeated!");
             }
@@ -2721,6 +2770,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         gameAudio.playRoar();
         throwPlayerBackFromLevelTwoSpawn();
+        playerKnockedOffLevelTwo = true;
 
         System.out.println("Level two arrival event fired: TAGE roar + throwback");
     }
@@ -2808,6 +2858,105 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             playerInTractorBeam = false;
         }
+    }
+
+    private void handlePlayerDeath()
+    {
+        if (playerDeathScreenActive)
+            return;
+
+        playerDeathScreenActive = true;
+        gameState = GameState.PAUSED;
+        physicsDebug = true;
+        engine.enablePhysicsWorldRender();
+        isFiring = false;
+        plasmaBurstShotsRemaining = 0;
+        playerGrappling = false;
+        currentMoveDir.set(0.0f, 0.0f, 0.0f);
+
+        gameAudio.stopRifleLoopSound();
+
+        if (playerP != null)
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        if (playerGrappleLine != null)
+            playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        Vector3f deathPos = player != null ? player.getWorldLocation() : new Vector3f(0.0f, 0.0f, 0.0f);
+        gameAudio.playPlayerDie(deathPos);
+
+        showDeathContinueHud();
+    }
+
+    private void showDeathContinueHud()
+    {
+        engine.getHUDmanager().setHUD1(
+            "CONTINUE",
+            new Vector3f(1.0f, 1.0f, 1.0f),
+            520,
+            400
+        );
+
+        engine.getHUDmanager().setHUD2(
+            "<press ENTER>",
+            new Vector3f(0.95f, 0.95f, 0.95f),
+            500,
+            350
+        );
+
+        engine.getHUDmanager().setHUD3("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+    }
+
+    private void continueAfterPlayerDeath()
+    {
+        playerDeathScreenActive = false;
+        pHealth = 100;
+        gameState = GameState.PLAYING;
+        physicsDebug = false;
+        engine.disablePhysicsWorldRender();
+        isFiring = false;
+        plasmaBurstShotsRemaining = 0;
+        playerGrappling = false;
+        currentMoveDir.set(0.0f, 0.0f, 0.0f);
+
+        if (playerP != null)
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        if (playerGrappleLine != null)
+            playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        engine.getHUDmanager().setHUD1("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD2("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD3("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+
+        System.out.println("Player continued after death");
+    }
+
+    private String getObjectiveHudText()
+    {
+        if (brainDefeated)
+            return "YOU WIN!";
+
+        if (brainActive && brainHealth > 0)
+            return "Finish off the brain!";
+
+        if (mapSelection == 1)
+        {
+            if (playerHasGrapple)
+                return "One of those weird aliens dropped this grapple gun, press E to grapple! Get back up there!";
+
+            if (playerKnockedOffLevelTwo)
+                return "There's got to be a way to get back up there!";
+
+            return "They left the tractor beam active, get in there and destroy the brain!";
+        }
+
+        if (tractorBeamActive)
+            return "They left the tractor beam active, get in there and destroy the brain!";
+
+        return "Defend Earth from the robot monkeys!";
     }
 
     private String getTractorBeamDebugText(Vector3f playerPos)
@@ -2942,7 +3091,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     }
     public void setPlayerHealth(int value)
     {
+        int oldHealth = pHealth;
         pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
+
+        if (oldHealth > 0 && pHealth <= 0)
+            handlePlayerDeath();
     }
     public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
     public int getPlayerHealth() { return pHealth; }
