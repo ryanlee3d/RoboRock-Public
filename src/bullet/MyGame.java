@@ -2925,6 +2925,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         handleMouseLook(e);
     }
 
+    @Override
+    public void mouseDragged(MouseEvent e)
+    {
+        handleMouseLook(e);
+    }
+
     private void handleMouseLook(MouseEvent e)
     {
         if (isShuttingDown || !mouseModeInitiated || orbitCam == null) return;
@@ -2967,6 +2973,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (gameState != GameState.PLAYING) return;
         if (e.getButton() != MouseEvent.BUTTON1) return;
+
+        recenterMouse();
+        prevMouseX = centerX;
+        prevMouseY = centerY;
 
         beginFireInput();
     }
