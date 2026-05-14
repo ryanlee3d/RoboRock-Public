@@ -19,6 +19,8 @@ public class GameServerUDP extends GameConnectionServer<UUID>
     private Map<UUID, Integer> clientAvatarSelections;
     private Map<UUID, Float> clientYaws;
     private Map<UUID, Integer> clientWeaponSelections;
+    private UUID hostClientID = null;
+
     public GameServerUDP(int localPort) throws IOException
     {
         super(localPort, ProtocolType.UDP);
@@ -48,7 +50,16 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                     UUID clientID = UUID.fromString(msgTokens[1]);
 
                     addClient(ci, clientID);
+
+                    if (hostClientID == null)
+                    {
+                        hostClientID = clientID;
+                        System.out.println("Host client assigned: " + hostClientID);
+                    }
+
                     sendJoinedMessage(clientID, true);
+                    sendHostMessage(clientID, clientID.equals(hostClientID));
+
                     // Backfill any already-connected players to the newly joined client.
                     sendDetailsMessages(clientID);
 
@@ -111,6 +122,23 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 sendMoveMessages(clientID, pos, avatarSelection, yaw, weaponIndex);
             }
 
+            // ENEMY STATE / BULLET RELAY
+            if (command.equals("enemyUpdate") ||
+                command.equals("enemyRemove") ||
+                command.equals("enemyBullet") ||
+                command.equals("playerBullet"))
+            {
+                try
+                {
+                    UUID senderID = UUID.fromString(msgTokens[1]);
+                    forwardPacketToAll(message, senderID);
+                }
+                catch (IOException e)
+                {
+                    e.printStackTrace();
+                }
+            }
+
             // BYE
             if (command.equals("bye"))
             {
@@ -122,6 +150,18 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 clientWeaponSelections.remove(clientID);
                 sendByeMessages(clientID);
                 removeClient(clientID);
+
+                if (clientID.equals(hostClientID))
+                {
+                    hostClientID = null;
+
+                    if (!clientPositions.isEmpty())
+                    {
+                        hostClientID = clientPositions.keySet().iterator().next();
+                        sendHostMessage(hostClientID, true);
+                        System.out.println("New host client assigned: " + hostClientID);
+                    }
+                }
 
                 System.out.println("Client left: " + clientID);
             }
@@ -142,6 +182,19 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         try
         {
             String message = "join," + (success ? "success" : "failure");
+            sendPacket(message, clientID);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendHostMessage(UUID clientID, boolean isHost)
+    {
+        try
+        {
+            String message = "host," + isHost;
             sendPacket(message, clientID);
         }
         catch (IOException e)

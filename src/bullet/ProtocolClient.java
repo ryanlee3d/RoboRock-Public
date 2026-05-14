@@ -48,6 +48,14 @@ public class ProtocolClient extends GameConnectionClient
                 }
             }
 
+            // HOST ASSIGNMENT
+            if (command.equals("host"))
+            {
+                boolean isHost = Boolean.parseBoolean(tokens[1]);
+                game.setIsHostClient(isHost);
+                System.out.println("Host client status: " + isHost);
+            }
+
             // CREATE or DETAILS
             if (command.equals("create") || command.equals("ghostDetails") || command.equals("GhostDetails"))
             {
@@ -96,6 +104,92 @@ public class ProtocolClient extends GameConnectionClient
                     weaponIndex = Integer.parseInt(tokens[7]);
 
                 ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection, yaw, weaponIndex);
+            }
+
+            // ENEMY UPDATE
+            if (command.equals("enemyUpdate"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                int enemyID = Integer.parseInt(tokens[2]);
+                String enemyType = tokens[3];
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[4]),
+                        Float.parseFloat(tokens[5]),
+                        Float.parseFloat(tokens[6])
+                );
+
+                float yaw = Float.parseFloat(tokens[7]);
+                int health = Integer.parseInt(tokens[8]);
+                boolean dead = Boolean.parseBoolean(tokens[9]);
+
+                game.receiveNetworkEnemyUpdate(enemyID, enemyType, pos, yaw, health, dead);
+            }
+
+            // ENEMY REMOVE
+            if (command.equals("enemyRemove"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                int enemyID = Integer.parseInt(tokens[2]);
+                String enemyType = tokens[3];
+
+                game.receiveNetworkEnemyRemove(enemyID, enemyType);
+            }
+
+            // ENEMY BULLET
+            if (command.equals("enemyBullet"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                Vector3f dir = new Vector3f(
+                        Float.parseFloat(tokens[5]),
+                        Float.parseFloat(tokens[6]),
+                        Float.parseFloat(tokens[7])
+                );
+
+                boolean isPlasma = Boolean.parseBoolean(tokens[8]);
+                game.receiveNetworkEnemyBullet(pos, dir, isPlasma);
+            }
+
+            // PLAYER BULLET
+            if (command.equals("playerBullet"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                Vector3f dir = new Vector3f(
+                        Float.parseFloat(tokens[5]),
+                        Float.parseFloat(tokens[6]),
+                        Float.parseFloat(tokens[7])
+                );
+
+                boolean isPlasma = Boolean.parseBoolean(tokens[8]);
+                game.receiveNetworkPlayerBullet(pos, dir, isPlasma);
             }
 
             // BYE
@@ -152,6 +246,86 @@ public class ProtocolClient extends GameConnectionClient
                     "," + game.getAvatarSelection() +
                     "," + game.getPlayerYaw() +
                     "," + game.getCurrentWeaponIndex();
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendEnemyUpdate(int enemyID, String enemyType, Vector3f pos, float yaw, int health, boolean dead)
+    {
+        try
+        {
+            String msg = "enemyUpdate," + id +
+                    "," + enemyID +
+                    "," + enemyType +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + yaw +
+                    "," + health +
+                    "," + dead;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendEnemyRemove(int enemyID, String enemyType)
+    {
+        try
+        {
+            String msg = "enemyRemove," + id +
+                    "," + enemyID +
+                    "," + enemyType;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendEnemyBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        try
+        {
+            String msg = "enemyBullet," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + dir.x() +
+                    "," + dir.y() +
+                    "," + dir.z() +
+                    "," + isPlasma;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendPlayerBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        try
+        {
+            String msg = "playerBullet," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + dir.x() +
+                    "," + dir.y() +
+                    "," + dir.z() +
+                    "," + isPlasma;
 
             sendPacket(msg);
         }

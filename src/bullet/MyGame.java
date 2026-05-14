@@ -1,4 +1,3 @@
-// UNIQUE PATCHED COPY: death continue HUD + player death sound, generated 2026-05-12
 package bullet;
 
 import tage.*;
@@ -170,8 +169,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
     private boolean isClientConnected = false;
+    private boolean isHostClient = false;
     private float networkUpdateTimer = 0.0f;
     private static final float NETWORK_UPDATE_INTERVAL = 0.05f;
+    private NetworkEnemyManager networkEnemyManager;
+    private float enemyNetworkUpdateTimer = 0.0f;
+    private static final float ENEMY_NETWORK_UPDATE_INTERVAL = 0.10f;
+    
 
     // skyboxes
     private int spaceSkyBox, islandSkyBox, lushSkyBox, plainsSkyBox;
@@ -221,6 +225,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // apes
     private java.util.ArrayList<GameObject> activeApes = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeApeNetworkIds = new java.util.ArrayList<>();
+    private int nextNetworkEnemyId = 1;
     private java.util.ArrayList<PhysicsObject> activeApePhysics = new java.util.ArrayList<>();
     private java.util.ArrayList<Integer> activeApeHealth = new java.util.ArrayList<>();
     private java.util.ArrayList<Boolean> activeApeDead = new java.util.ArrayList<>();
@@ -288,6 +294,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         super();
         gm = new GhostManager(this);
+        networkEnemyManager = new NetworkEnemyManager(this);
         ufoWaveManager = new UfoWaveManager(this::spawnApe, this::getPlayerPosition);
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
@@ -594,6 +601,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         newApe.setPhysicsObject(apeP);
 
         activeApes.add(newApe);
+        activeApeNetworkIds.add(nextNetworkEnemyId++);
         activeApeGuns.add(newApeGun);
         activeApePhysics.add(apeP);
         activeApeHealth.add(100); 
@@ -607,6 +615,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void removeApe(int index)
     {
+        int networkID = activeApeNetworkIds.get(index);
+
+        if (protClient != null && isHostClient)
+            protClient.sendEnemyRemove(networkID, "APE");
+
         GameObject ape = activeApes.get(index);
         PhysicsObject apeP = activeApePhysics.get(index);
         GameObject apeGun = activeApeGuns.get(index);
@@ -621,6 +634,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             apeGun.setLocalScale(new Matrix4f().scaling(0.0001f));
 
         activeApes.remove(index);
+        activeApeNetworkIds.remove(index);
         activeApeGuns.remove(index);
         activeApePhysics.remove(index);
         activeApeHealth.remove(index);
@@ -681,6 +695,49 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         return activeApes.indexOf(apeObj);
     }
 
+    private Vector3f getClosestPlayerOrGhostTarget(Vector3f from)
+    {
+        if (from == null)
+            return null;
+
+        Vector3f bestTarget = null;
+        float bestDistSq = Float.MAX_VALUE;
+
+        if (player != null)
+        {
+            Vector3f playerPos = player.getWorldLocation();
+
+            float dx = playerPos.x - from.x;
+            float dy = playerPos.y - from.y;
+            float dz = playerPos.z - from.z;
+
+            bestDistSq = dx * dx + dy * dy + dz * dz;
+            bestTarget = new Vector3f(playerPos);
+        }
+
+        if (gm != null)
+        {
+            Vector3f ghostPos = gm.getClosestGhostPosition(from);
+
+            if (ghostPos != null)
+            {
+                float dx = ghostPos.x - from.x;
+                float dy = ghostPos.y - from.y;
+                float dz = ghostPos.z - from.z;
+
+                float ghostDistSq = dx * dx + dy * dy + dz * dz;
+
+                if (bestTarget == null || ghostDistSq < bestDistSq)
+                {
+                    bestDistSq = ghostDistSq;
+                    bestTarget = new Vector3f(ghostPos);
+                }
+            }
+        }
+
+        return bestTarget;
+    }
+
     private class PlayerAliveCondition extends BTCondition
     {
         public PlayerAliveCondition()
@@ -707,19 +764,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         protected BTStatus update(float elapsedTime)
         {
-            if (player == null || apeObj == null || apePhys == null)
+            if (apeObj == null || apePhys == null)
                 return BTStatus.BH_FAILURE;
 
-            Vector3f playerPos = player.getWorldLocation();
             Vector3f apePos = apePhys.getLocation();
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(apePos);
 
-            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
-            if (toPlayer.length() < 0.001f)
+            if (targetPos == null)
                 return BTStatus.BH_FAILURE;
 
-            toPlayer.normalize();
+            Vector3f toTarget = new Vector3f(targetPos).sub(apePos);
 
-            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            if (toTarget.length() < 0.001f)
+                return BTStatus.BH_FAILURE;
+
+            toTarget.normalize();
+
+            float yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
             apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
 
             return BTStatus.BH_SUCCESS;
@@ -740,13 +801,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         protected BTStatus update(float elapsedTime)
         {
             int i = getApeIndex(apeObj);
-            if (i < 0 || player == null || apePhys == null)
+            if (i < 0 || apePhys == null)
                 return BTStatus.BH_FAILURE;
 
-            Vector3f playerPos = player.getWorldLocation();
             Vector3f apePos = apePhys.getLocation();
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(apePos);
 
-            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
+            if (targetPos == null)
+                return BTStatus.BH_FAILURE;
+
+            Vector3f toPlayer = new Vector3f(targetPos).sub(apePos);
             float dist = toPlayer.length();
 
             if (dist < 0.001f)
@@ -837,19 +901,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         protected BTStatus update(float elapsedTime)
         {
             int i = getApeIndex(apeObj);
-            if (i < 0 || player == null || apePhys == null)
-                return BTStatus.BH_FAILURE;
+        if (i < 0 || apePhys == null)
+            return BTStatus.BH_FAILURE;
 
-            Vector3f playerPos = player.getWorldLocation();
-            Vector3f apePos = apePhys.getLocation();
+        Vector3f apePos = apePhys.getLocation();
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(apePos);
 
-            float dist = new Vector3f(playerPos).sub(apePos).length();
+        if (targetPos == null)
+            return BTStatus.BH_FAILURE;
+
+        float dist = new Vector3f(targetPos).sub(apePos).length();
 
             float fireCd = activeApeFireCooldowns.get(i) - elapsedTime;
 
             if (fireCd <= 0.0f && dist <= 25.0f)
             {
-                Vector3f fireDir = new Vector3f(playerPos)
+                Vector3f fireDir = new Vector3f(targetPos)
                     .add(0.0f, 1.0f, 0.0f)
                     .sub(apePos.x, apePos.y + 1.5f, apePos.z)
                     .normalize();
@@ -858,6 +925,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     .add(new Vector3f(fireDir).mul(1.2f));
 
                 spawnEnemyBullet(muzzlePos, fireDir, true);
+
+                if (protClient != null && isHostClient)
+                protClient.sendEnemyBullet(muzzlePos, fireDir, true);
 
                 gameAudio.playNpcPlasma(muzzlePos);
 
@@ -2461,7 +2531,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             syncGameObjectToPhysics(player);
         }
 
-        updateApeBehaviorTrees(dt);
+        if (isHostClient)
+            updateApeBehaviorTrees(dt);
 
         updateSkinnys(dt);
 
@@ -2469,16 +2540,18 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         updatePlayerGrapple(dt);
 
-        updateApesFromPhysics();
+        if (isHostClient)
+            updateApesFromPhysics();
 
         updateSkinnysFromPhysics();
 
-        if (mapSelection == 0)
+        if (isHostClient && mapSelection == 0)
         {
             ufoWaveManager.update(dt);
         }
 
-        updateDeadApes(dt);
+        if (isHostClient)
+            updateDeadApes(dt);
 
         bulletManager.update(dt);
 
@@ -2512,6 +2585,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     .add(new Vector3f(dir).mul(1.5f));
 
                 bulletManager.spawnPlayerBullet(spawnPos, dir, true);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, dir, true);
+
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playPlasmaRifle();
 
@@ -2539,7 +2616,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         updateBrainBoss(dt);
 
         // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
-        if (!ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
+        if (isHostClient && !ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
         {
             if (ufoWaveManager.isFinalWaveComplete())
                 startTractorBeam();
@@ -2565,6 +2642,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (protClient != null && player != null)
                 protClient.sendMoveMessage(player.getWorldLocation());
+        }
+
+        enemyNetworkUpdateTimer += dt;
+
+        if (enemyNetworkUpdateTimer >= ENEMY_NETWORK_UPDATE_INTERVAL)
+        {
+            enemyNetworkUpdateTimer = 0.0f;
+            sendApeNetworkUpdates();
         }
 
 	Vector3f playerpos = player.getWorldLocation();
@@ -2894,6 +2979,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             case PISTOL:
                 bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, forward, false);
+
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playPistolShot();
                 break;
@@ -2906,14 +2995,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 }
                 else
                 {
-                    bulletManager.spawnPlayerBullet(spawnPos, forward, true);
-                    weaponInventory.consumeCurrentRound();
-                    gameAudio.playPlasmaRifle();
+                bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, forward, false);
+
+                weaponInventory.consumeCurrentRound();
+                gameAudio.playRifleLoopSound();
                 }
                 break;
 
             case RIFLE:
                 bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, forward, false);
+
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playRifleLoopSound();
                 break;
@@ -2928,6 +3025,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     ).normalize();
 
                 bulletManager.spawnPlayerBullet(spawnPos, spreadDir, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, spreadDir, false);
                 }
                 weaponInventory.consumeCurrentRound();
 
@@ -3562,6 +3662,75 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         System.out.println("Swapped to case 1 terrain");
     }
 
+    private void sendApeNetworkUpdates()
+    {
+        if (!isHostClient || protClient == null)
+            return;
+
+        for (int i = 0; i < activeApes.size(); i++)
+        {
+            GameObject apeObj = activeApes.get(i);
+
+            if (apeObj == null)
+                continue;
+
+            int enemyID = activeApeNetworkIds.get(i);
+            Vector3f pos = apeObj.getWorldLocation();
+
+            float yaw = 0.0f;
+
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+            if (targetPos != null)
+            {
+                Vector3f toTarget = new Vector3f(targetPos).sub(pos);
+
+                if (toTarget.lengthSquared() > 0.001f)
+                    yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+            }
+
+            int health = activeApeHealth.get(i);
+            boolean dead = activeApeDead.get(i);
+
+            protClient.sendEnemyUpdate(enemyID, "APE", pos, yaw, health, dead);
+        }
+    }
+
+    public void receiveNetworkEnemyUpdate(int enemyID, String enemyType, Vector3f pos, float yaw, int health, boolean dead)
+    {
+        if (isHostClient)
+            return;
+
+        if (networkEnemyManager != null)
+            networkEnemyManager.updateEnemy(enemyID, enemyType, pos, yaw, health, dead);
+    }
+
+    public void receiveNetworkEnemyRemove(int enemyID, String enemyType)
+    {
+        if (isHostClient)
+            return;
+
+        if (networkEnemyManager != null)
+            networkEnemyManager.removeEnemy(enemyID);
+    }
+
+    public void receiveNetworkEnemyBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        if (isHostClient)
+            return;
+
+        spawnEnemyBullet(pos, dir, isPlasma);
+        gameAudio.playNpcPlasma(pos);
+    }
+
+    public void receiveNetworkPlayerBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        if (!isHostClient)
+            return;
+
+        bulletManager.spawnPlayerBullet(pos, dir, isPlasma);
+    }
+
     // ========================================================
     // GETTERS & SETTERS
     // ========================================================
@@ -3600,9 +3769,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     // --- Networking & Multiplayer ---
     public ProtocolClient getProtocolClient() { return protClient; }
     public void setIsConnected(boolean value) { isClientConnected = value; }
+    public void setIsHostClient(boolean value)
+    {
+        isHostClient = value;
+    }
+
+    public boolean isHostClient()
+    {
+        return isHostClient;
+    }
     public GhostManager getGhostManager() { return gm; }
     public ObjShape getGhostShape() { return ghostS; }
     public TextureImage getGhostTexture() { return ghostT; }
+
+    public ObjShape getApeShape()
+    {
+        return apeS;
+    }
+
+    public TextureImage getApeTexture()
+    {
+        return apeTx;
+    }
     public int getAvatarSelection()
     {
         return avatarSelection;

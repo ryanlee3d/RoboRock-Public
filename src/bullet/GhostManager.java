@@ -180,6 +180,40 @@ public class GhostManager
         updateGhostAvatar(id, pos, 0);
     }
 
+    public Vector3f getClosestGhostPosition(Vector3f from)
+    {
+        if (from == null)
+            return null;
+
+        GhostAvatar closest = null;
+        float bestDistSq = Float.MAX_VALUE;
+
+        for (GhostAvatar g : ghostAvs)
+        {
+            if (g == null)
+                continue;
+
+            Vector3f ghostPos = g.getWorldLocation();
+
+            float dx = ghostPos.x - from.x;
+            float dy = ghostPos.y - from.y;
+            float dz = ghostPos.z - from.z;
+
+            float distSq = dx * dx + dy * dy + dz * dz;
+
+            if (distSq < bestDistSq)
+            {
+                bestDistSq = distSq;
+                closest = g;
+            }
+        }
+
+        if (closest == null)
+            return null;
+
+        return new Vector3f(closest.getWorldLocation());
+    }
+
     public void updateGhostAnimations(float dt)
     {
         for (GhostAvatar g : ghostAvs)
