@@ -10,6 +10,7 @@ import tage.ObjShape;
 import tage.TextureImage;
 import tage.physics.PhysicsEngine;
 import tage.physics.PhysicsObject;
+import java.util.UUID;
 
 public class BulletManager {
     private final MyGame game;
@@ -43,14 +44,18 @@ public class BulletManager {
     }
 
     public void spawnPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, false);
+        spawnBullet(spawnPos, dir, isPlasma, false, null);
+    }
+
+    public void spawnNetworkPlayerBullet(UUID ownerID, Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
+        spawnBullet(spawnPos, dir, isPlasma, false, ownerID);
     }
 
     public void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, true);
+        spawnBullet(spawnPos, dir, isPlasma, true, null);
     }
 
-    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy) {
+    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy, UUID ownerID) {
         GameObject bulletObj = new GameObject(GameObject.root(), bulletSphereS, isPlasma ? bulletBlueTx : bulletYellowTx);
         float scale = isPlasma ? plasmaRadius : bulletRadius;
         bulletObj.setLocalTranslation(new Matrix4f().translation(spawnPos.x, spawnPos.y, spawnPos.z));
@@ -70,7 +75,7 @@ public class BulletManager {
         bulletP.setLinearVelocity(new float[] { velocity.x, velocity.y, velocity.z });
         bulletObj.setPhysicsObject(bulletP);
 
-        activeBullets.add(new Bullet(bulletObj, bulletP, velocity, bulletLifeMax, isPlasma, fromEnemy));
+        activeBullets.add(new Bullet(bulletObj, bulletP, velocity, bulletLifeMax, isPlasma, fromEnemy, ownerID));
     }
 
     public void update(float dt) {
@@ -94,8 +99,8 @@ public class BulletManager {
                     bulletRemoved = true;
                 }
             } else {
-                if (game.checkAndDamageApe(loc) ||
-                    game.checkAndDamageSkinny(loc) ||
+                if (game.checkAndDamageApe(loc, b.ownerID) ||
+                    game.checkAndDamageSkinny(loc, b.ownerID) ||
                     game.checkAndDamageBrain(loc))
                     bulletRemoved = true;
             }

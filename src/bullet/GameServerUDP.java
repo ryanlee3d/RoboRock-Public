@@ -122,11 +122,16 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 sendMoveMessages(clientID, pos, avatarSelection, yaw, weaponIndex);
             }
 
-            // ENEMY STATE / BULLET RELAY
-            if (command.equals("enemyUpdate") ||
-                command.equals("enemyRemove") ||
-                command.equals("enemyBullet") ||
-                command.equals("playerBullet"))
+                // ENEMY STATE / BULLET RELAY
+                if (command.equals("enemyUpdate") ||
+                    command.equals("enemyRemove") ||
+                    command.equals("enemyBullet") ||
+                    command.equals("playerBullet") ||
+                    command.equals("creditAward") ||
+                    command.equals("ufoWaveStart") ||
+                    command.equals("tractorBeamStart") ||
+                    command.equals("grappleDrop") ||
+                    command.equals("grappleTaken"))
             {
                 try
                 {

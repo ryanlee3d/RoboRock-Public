@@ -40,6 +40,10 @@ public class UfoWaveManager
     private boolean active = false;
     private boolean waveDropFinished = false;
     private int currentWave = 0;
+    private boolean networkVisualOnly = false;
+    private Vector3f lastWaveTarget = new Vector3f();
+    private int lastWaveApeCount = 0;
+    private int lastWaveUfoIndex = -1;
 
     public UfoWaveManager(Consumer<Vector3f> apeSpawner, Supplier<Vector3f> playerPositionSupplier)
     {
@@ -102,6 +106,30 @@ public class UfoWaveManager
         return largeUfo.getWorldLocation();
     }
 
+    public void startNetworkWave(Vector3f pos, int apeCount, int ufoIndex)
+    {
+        if (active)
+            return;
+
+        networkVisualOnly = true;
+        spawnWave(pos, apeCount, ufoIndex);
+    }
+
+    public Vector3f getLastWaveTarget()
+    {
+        return new Vector3f(lastWaveTarget);
+    }
+
+    public int getLastWaveApeCount()
+    {
+        return lastWaveApeCount;
+    }
+
+    public int getLastWaveUfoIndex()
+    {
+        return lastWaveUfoIndex;
+    }
+
     public void update(float dt)
     {
         if (!active || activeUfo == null || waveDropFinished) return;
@@ -123,9 +151,12 @@ public class UfoWaveManager
 
         if (t >= 1.0f)
         {
-            dropApes(activeUfoTarget, activeUfoDropCount);
+            if (!networkVisualOnly)
+                dropApes(activeUfoTarget, activeUfoDropCount);
+
             waveDropFinished = true;
             active = false;
+            networkVisualOnly = false;
         }
     }
 
@@ -170,6 +201,9 @@ public class UfoWaveManager
         activeUfoTarget.set(pos);
         activeUfoTravelTime = 0.0f;
         activeUfoDropCount = apeCount;
+        lastWaveTarget.set(pos);
+        lastWaveApeCount = apeCount;
+        lastWaveUfoIndex = ufoIndex;
 
         if (apeCount == 10)
         {

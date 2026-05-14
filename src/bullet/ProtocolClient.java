@@ -189,7 +189,82 @@ public class ProtocolClient extends GameConnectionClient
                 );
 
                 boolean isPlasma = Boolean.parseBoolean(tokens[8]);
-                game.receiveNetworkPlayerBullet(pos, dir, isPlasma);
+                game.receiveNetworkPlayerBullet(senderID, pos, dir, isPlasma);
+            }
+
+            // CREDIT AWARD
+            if (command.equals("creditAward"))
+            {
+                UUID targetID = UUID.fromString(tokens[2]);
+                int amount = Integer.parseInt(tokens[3]);
+
+                if (targetID.equals(id))
+                    game.receiveCreditAward(amount);
+            }
+
+            // UFO WAVE START
+            if (command.equals("ufoWaveStart"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                int apeCount = Integer.parseInt(tokens[5]);
+                int ufoIndex = Integer.parseInt(tokens[6]);
+
+                game.receiveNetworkUfoWaveStart(pos, apeCount, ufoIndex);
+            }
+
+            // TRACTOR BEAM START
+            if (command.equals("tractorBeamStart"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f ufoPos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                game.receiveNetworkTractorBeamStart(ufoPos);
+            }
+
+            // GRAPPLE DROP
+            if (command.equals("grappleDrop"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                game.receiveNetworkGrappleDrop(pos);
+            }
+
+            // GRAPPLE TAKEN
+            if (command.equals("grappleTaken"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                game.receiveNetworkGrappleTaken();
             }
 
             // BYE
@@ -327,6 +402,88 @@ public class ProtocolClient extends GameConnectionClient
                     "," + dir.z() +
                     "," + isPlasma;
 
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendCreditAward(UUID targetID, int amount)
+    {
+        try
+        {
+            String msg = "creditAward," + id +
+                    "," + targetID +
+                    "," + amount;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendUfoWaveStart(Vector3f pos, int apeCount, int ufoIndex)
+    {
+        try
+        {
+            String msg = "ufoWaveStart," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + apeCount +
+                    "," + ufoIndex;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendTractorBeamStart(Vector3f ufoPos)
+    {
+        try
+        {
+            String msg = "tractorBeamStart," + id +
+                    "," + ufoPos.x() +
+                    "," + ufoPos.y() +
+                    "," + ufoPos.z();
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendGrappleDrop(Vector3f pos)
+    {
+        try
+        {
+            String msg = "grappleDrop," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z();
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendGrappleTaken()
+    {
+        try
+        {
+            String msg = "grappleTaken," + id;
             sendPacket(msg);
         }
         catch (IOException e)

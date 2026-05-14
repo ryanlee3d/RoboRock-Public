@@ -26,11 +26,26 @@ public class NetworkEnemyManager
 
     public void updateEnemy(int enemyID, String type, Vector3f pos, float yaw, int health, boolean dead)
     {
-        if (!type.equals("APE"))
-            return;
+        ObjShape shape = null;
+        TextureImage texture = null;
+        float enemyScale = 0.01f;
 
-        ObjShape shape = game.getApeShape();
-        TextureImage texture = game.getApeTexture();
+        if (type.equals("APE"))
+        {
+            shape = game.getApeShape();
+            texture = game.getApeTexture();
+            enemyScale = 0.01f;
+        }
+        else if (type.equals("SKINNY"))
+        {
+            shape = game.getSkinnyShape();
+            texture = game.getSkinnyTexture();
+            enemyScale = 0.8f;
+        }
+        else
+        {
+            return;
+        }
 
         if (shape == null || texture == null)
             return;
@@ -42,7 +57,7 @@ public class NetworkEnemyManager
         if (enemy == null)
         {
             enemy = new GameObject(GameObject.root(), shape, texture);
-            enemy.setLocalScale(new Matrix4f().scaling(0.01f));
+            enemy.setLocalScale(new Matrix4f().scaling(enemyScale));
 
             enemies.put(enemyID, enemy);
             enemyDeadStates.put(enemyID, false);
@@ -56,35 +71,58 @@ public class NetworkEnemyManager
         {
             AnimatedShape animShape = (AnimatedShape) shape;
 
-            if (dead)
+            if (!dead && moving && (!wasMoving || wasDead))
             {
-                if (!wasDead)
-                    animShape.playAnimation("DIE", 0.3f, AnimatedShape.EndType.STOP, 0);
-            }
-            else if (moving && (!wasMoving || wasDead))
-            {
-                animShape.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
+                if (type.equals("APE"))
+                    animShape.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
+                else if (type.equals("SKINNY"))
+                    animShape.playAnimation("GRAPPLE", 0.3f, AnimatedShape.EndType.LOOP, 0);
             }
         }
 
         enemy.setLocalTranslation(new Matrix4f().translation(pos));
-        enemy.setLocalRotation(new Matrix4f().rotationY(yaw));
 
         if (dead)
         {
-            enemy.getRenderStates().setModelOrientationCorrection(
-                new Matrix4f()
-                    .rotationX((float)java.lang.Math.toRadians(90.0f))
-                    .rotateZ((float)java.lang.Math.toRadians(270.0f))
-            );
+            if (type.equals("APE"))
+            {
+                enemy.setLocalRotation(new Matrix4f().rotationY(yaw).rotateZ((float)java.lang.Math.toRadians(90.0f)));
+                enemy.setLocalScale(new Matrix4f().scaling(enemyScale));
+            }
+            else if (type.equals("SKINNY"))
+            {
+                enemy.setLocalRotation(new Matrix4f().rotationY(yaw));
+                enemy.setLocalScale(new Matrix4f().scaling(0.0001f));
+            }
         }
         else
         {
-            enemy.getRenderStates().setModelOrientationCorrection(
-                new Matrix4f()
-                    .rotationX((float)java.lang.Math.toRadians(90.0f))
-                    .rotateZ((float)java.lang.Math.toRadians(180.0f))
-            );
+            enemy.setLocalRotation(new Matrix4f().rotationY(yaw));
+            enemy.setLocalScale(new Matrix4f().scaling(enemyScale));
+        }
+
+        if (type.equals("APE"))
+        {
+            if (dead)
+            {
+                enemy.getRenderStates().setModelOrientationCorrection(
+                    new Matrix4f()
+                        .rotationX((float)java.lang.Math.toRadians(90.0f))
+                        .rotateZ((float)java.lang.Math.toRadians(270.0f))
+                );
+            }
+            else
+            {
+                enemy.getRenderStates().setModelOrientationCorrection(
+                    new Matrix4f()
+                        .rotationX((float)java.lang.Math.toRadians(90.0f))
+                        .rotateZ((float)java.lang.Math.toRadians(180.0f))
+                );
+            }
+        }
+        else if (type.equals("SKINNY"))
+        {
+            enemy.getRenderStates().setModelOrientationCorrection(new Matrix4f());
         }
 
         enemyDeadStates.put(enemyID, dead);

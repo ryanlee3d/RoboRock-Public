@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import tage.networking.IGameConnection.ProtocolType;
+import java.util.UUID;
 
 // physics imports
 import tage.physics.PhysicsEngine;
@@ -205,6 +206,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private boolean brainRushing = false;
     private int brainHealth = 5000;
     private final int brainMaxHealth = 5000;
+    private static final int NETWORK_BRAIN_ID = -5000;
 
     // ghost rendering
     private AnimatedShape ghostS;
@@ -243,6 +245,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // skinwalker
     private java.util.ArrayList<GameObject> activeSkinnys = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeSkinnyNetworkIds = new java.util.ArrayList<>();
     private java.util.ArrayList<PhysicsObject> activeSkinnyPhysics = new java.util.ArrayList<>();
     private java.util.ArrayList<Integer> activeSkinnyHealth = new java.util.ArrayList<>();
     private java.util.ArrayList<Boolean> activeSkinnyDead = new java.util.ArrayList<>();
@@ -1027,6 +1030,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         s.setPhysicsObject(p);
 
         activeSkinnys.add(s);
+        activeSkinnyNetworkIds.add(nextNetworkEnemyId++);
         activeSkinnyPhysics.add(p);
         activeSkinnyHealth.add(100);
         activeSkinnyDead.add(false);
@@ -1067,8 +1071,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (player == null) return;
 
-        Vector3f playerPos = player.getWorldLocation();
-
         for (int i = 0; i < activeSkinnys.size(); i++)
         {
             if (activeSkinnyDead.get(i)) continue;
@@ -1076,11 +1078,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             PhysicsObject p = activeSkinnyPhysics.get(i);
             Vector3f pos = p.getLocation();
 
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+            if (targetPos == null)
+                continue;
+
             float timer = activeSkinnyBounceTimers.get(i) - dt;
             
         if (timer <= 0.0f)
         {
-            Vector3f dir = new Vector3f(playerPos).sub(pos);
+            Vector3f dir = new Vector3f(targetPos).sub(pos);
             if (dir.length() > 0.01f) dir.normalize();
 
             p.setLinearVelocity(new float[]{
@@ -1127,7 +1134,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
         */
         // === SKINNY SHOOTING ===
-        float dist = new Vector3f(playerPos).sub(pos).length();
+        float dist = new Vector3f(targetPos).sub(pos).length();
 
         float fireCd = activeSkinnyFireCooldowns.get(i) - dt;
 
@@ -1145,15 +1152,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             else
                 muzzleBase = new Vector3f(pos.x, pos.y + 1.5f, pos.z);
 
-            Vector3f fireDir = new Vector3f(playerPos)
+            Vector3f fireDir = new Vector3f(targetPos)
                 .add(0.0f, 1.0f, 0.0f)
                 .sub(muzzleBase)
                 .normalize();
 
             Vector3f muzzlePos = new Vector3f(muzzleBase)
                 .add(new Vector3f(fireDir).mul(0.75f));
-
             spawnEnemyBullet(muzzlePos, fireDir, true);
+
+            if (protClient != null && isHostClient)
+                protClient.sendEnemyBullet(muzzlePos, fireDir, true);
 
             gameAudio.playNpcPlasma(muzzlePos);
 
@@ -1305,10 +1314,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void updateBrainAnimation()
     {
-        if (brain == null || brainS == null || player == null || mapSelection != 1)
+        if (brain == null || brainS == null || mapSelection != 1)
             return;
 
-        float dist = player.getWorldLocation().distance(brain.getWorldLocation());
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brain.getWorldLocation());
+
+        if (targetPos == null)
+            return;
+
+        float dist = targetPos.distance(brain.getWorldLocation());
 
         if (!brainFloating && dist <= 8.0f)
         {
@@ -1365,7 +1379,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void updateBrainCircle(float dt)
     {
-        Vector3f playerPos = player.getWorldLocation();
+        Vector3f playerPos = getClosestPlayerOrGhostTarget(brain.getWorldLocation());
+
+        if (playerPos == null)
+            return;
 
         brainCircleAngle += brainCircleDir * dt * 0.8f;
 
@@ -1415,8 +1432,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             case 3:
                 // rush attack
-                brainRushTarget.set(player.getWorldLocation());
-                brainRushing = true;
+                Vector3f targetPos = getClosestPlayerOrGhostTarget(brain.getWorldLocation());
+
+                if (targetPos != null)
+                {
+                    brainRushTarget.set(targetPos);
+                    brainRushing = true;
+                }
                 break;
         }
     }
@@ -1442,7 +1464,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private void brainSineShot()
     {
         Vector3f brainPos = brain.getWorldLocation();
-        Vector3f target = new Vector3f(player.getWorldLocation()).add(0.0f, 1.0f, 0.0f);
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brainPos);
+
+        if (targetPos == null)
+            return;
+
+        Vector3f target = new Vector3f(targetPos).add(0.0f, 1.0f, 0.0f);
 
         Vector3f dir = new Vector3f(target).sub(brainPos).normalize();
 
@@ -1457,13 +1484,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
 
         spawnEnemyBullet(muzzle, dir, true);
+        if (protClient != null && isHostClient)
+            protClient.sendEnemyBullet(muzzle, dir, true);
         gameAudio.playNpcPlasma(muzzle);
     }
 
     private void brainRandomShot()
     {
         Vector3f brainPos = brain.getWorldLocation();
-        Vector3f target = new Vector3f(player.getWorldLocation()).add(0.0f, 1.0f, 0.0f);
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brainPos);
+
+        if (targetPos == null)
+            return;
+
+        Vector3f target = new Vector3f(targetPos).add(0.0f, 1.0f, 0.0f);
 
         Vector3f dir = new Vector3f(target).sub(brainPos).normalize();
 
@@ -1476,13 +1510,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
 
         spawnEnemyBullet(muzzle, dir, true);
+        if (protClient != null && isHostClient)
+            protClient.sendEnemyBullet(muzzle, dir, true);
         gameAudio.playNpcPlasma(muzzle);
     }
 
     private void brainSquareBurst()
     {
         Vector3f brainPos = brain.getWorldLocation();
-        Vector3f target = new Vector3f(player.getWorldLocation()).add(0.0f, 1.0f, 0.0f);
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brainPos);
+
+        if (targetPos == null)
+            return;
+
+        Vector3f target = new Vector3f(targetPos).add(0.0f, 1.0f, 0.0f);
 
         Vector3f forward = new Vector3f(target).sub(brainPos).normalize();
         Vector3f right = new Vector3f(-forward.z, 0.0f, forward.x);
@@ -1505,6 +1546,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
                 spawnEnemyBullet(muzzle, dir, true);
+
+                if (protClient != null && isHostClient)
+                    protClient.sendEnemyBullet(muzzle, dir, true);
             }
         }
 
@@ -2465,7 +2509,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (pendingSkinnySpawn)
         {
-            spawnSkinnyWave();
+            if (isHostClient)
+                spawnSkinnyWave();
+
             pendingSkinnySpawn = false;
         }
 
@@ -2534,7 +2580,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (isHostClient)
             updateApeBehaviorTrees(dt);
 
-        updateSkinnys(dt);
+        if (isHostClient)
+            updateSkinnys(dt);
 
         checkGrapplePickup();
 
@@ -2543,9 +2590,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (isHostClient)
             updateApesFromPhysics();
 
-        updateSkinnysFromPhysics();
+        if (isHostClient)
+            updateSkinnysFromPhysics();
 
-        if (isHostClient && mapSelection == 0)
+        if (mapSelection == 0)
         {
             ufoWaveManager.update(dt);
         }
@@ -2612,16 +2660,32 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (apeS != null) apeS.updateAnimation();
         if (brainS != null) brainS.updateAnimation();
         
-        updateBrainAnimation();
-        updateBrainBoss(dt);
+        if (isHostClient)
+        {
+            updateBrainAnimation();
+            updateBrainBoss(dt);
+        }
 
         // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
         if (isHostClient && !ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
         {
             if (ufoWaveManager.isFinalWaveComplete())
+            {
                 startTractorBeam();
+            }
             else
+            {
                 ufoWaveManager.startNextWave();
+
+                if (protClient != null && ufoWaveManager.isActive())
+                {
+                    protClient.sendUfoWaveStart(
+                        ufoWaveManager.getLastWaveTarget(),
+                        ufoWaveManager.getLastWaveApeCount(),
+                        ufoWaveManager.getLastWaveUfoIndex()
+                    );
+                }
+            }
         }
 
         updateStaticObjectsToTerrain();
@@ -2650,35 +2714,37 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             enemyNetworkUpdateTimer = 0.0f;
             sendApeNetworkUpdates();
+            sendSkinnyNetworkUpdates();
+            sendBrainNetworkUpdates();
         }
 
-	Vector3f playerpos = player.getWorldLocation();
+        Vector3f playerpos = player.getWorldLocation();
 
-	pickupManager.handleCollisions(dt, player, weaponInventory, gameAudio);
+        pickupManager.handleCollisions(dt, player, weaponInventory, gameAudio);
 
-	float vx = 0.0f;
-	float vz = 0.0f;
+        float vx = 0.0f;
+        float vz = 0.0f;
 
-	if (playerP != null)
-	{
-		float[] vel = playerP.getLinearVelocity();
-		vx = vel[0];
-		vz = vel[2];
-	}
+        if (playerP != null)
+        {
+            float[] vel = playerP.getLinearVelocity();
+            vx = vel[0];
+            vz = vel[2];
+        }
 
-	float horizontalSpeed = (float)java.lang.Math.sqrt(vx * vx + vz * vz);
-	isMoving = horizontalSpeed > 0.05f;
+        float horizontalSpeed = (float)java.lang.Math.sqrt(vx * vx + vz * vz);
+        isMoving = horizontalSpeed > 0.05f;
 
-	if (playerS != null)
-	{
-		if (isMoving && !wasMoving)
-			playerS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
-		else if (!isMoving && wasMoving)
-			playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
-	}
+        if (playerS != null)
+        {
+            if (isMoving && !wasMoving)
+                playerS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
+            else if (!isMoving && wasMoving)
+                playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
+        }
 
-	wasMoving = isMoving;
-	prevPlayerPos.set(playerpos);
+        wasMoving = isMoving;
+        prevPlayerPos.set(playerpos);
 
         overheadCameraController.applyTo(camOver, playerpos);
 
@@ -2814,8 +2880,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     break;
                 // DEBUG KEYS
                 case KeyEvent.VK_T:
-                    pendingDebugFinalUfoBeam = true;
-                    System.out.println("DEBUG: queued final UFO beam test");
+                    if (isHostClient)
+                    {
+                        pendingDebugFinalUfoBeam = true;
+                        System.out.println("DEBUG: queued final UFO beam test");
+                    }
+                    else
+                    {
+                        System.out.println("DEBUG: T ignored on non-host; press T on host");
+                    }
                     break;
                 case KeyEvent.VK_Y:
                     spawnDebugSkinnyLoadout();
@@ -2995,13 +3068,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 }
                 else
                 {
-                bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+                bulletManager.spawnPlayerBullet(spawnPos, forward, true);
 
                 if (protClient != null)
-                    protClient.sendPlayerBullet(spawnPos, forward, false);
+                    protClient.sendPlayerBullet(spawnPos, forward, true);
 
                 weaponInventory.consumeCurrentRound();
-                gameAudio.playRifleLoopSound();
+                gameAudio.playPlasmaRifle();
                 }
                 break;
 
@@ -3049,6 +3122,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public boolean checkAndDamageApe(Vector3f loc)
     {
+        return checkAndDamageApe(loc, null);
+    }
+
+    public boolean checkAndDamageApe(Vector3f loc, UUID shooterID)
+    {
         for (int j = activeApes.size() - 1; j >= 0; j--)
         {
             GameObject ape = activeApes.get(j);
@@ -3081,7 +3159,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             apeP.applyTorque(0.0f, 0.0f, 35.0f);
                         }
 
-                        addPlayerCredits(25 + new Random().nextInt(26)); // 25-50 credits
+                        int creditAmount = 25 + new java.util.Random().nextInt(26);
+
+                        if (shooterID == null)
+                        {
+                            addPlayerCredits(creditAmount);
+                        }
+                        else if (protClient != null && isHostClient)
+                        {
+                            protClient.sendCreditAward(shooterID, creditAmount);
+                        }
                     }
                     return true;
                 }
@@ -3091,6 +3178,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     }
 
     public boolean checkAndDamageSkinny(Vector3f loc)
+    {
+        return checkAndDamageSkinny(loc, null);
+    }
+
+    public boolean checkAndDamageSkinny(Vector3f loc, UUID shooterID)
     {
         for (int i = activeSkinnys.size() - 1; i >= 0; i--)
         {
@@ -3109,6 +3201,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     skinnyKillCount++;
 
                     gameAudio.playAlienDie(s.getWorldLocation());
+
+                    int creditAmount = 25 + new java.util.Random().nextInt(26);
+
+                    if (shooterID == null)
+                    {
+                        addPlayerCredits(creditAmount);
+                    }
+                    else if (protClient != null && isHostClient)
+                    {
+                        protClient.sendCreditAward(shooterID, creditAmount);
+                    }
 
                     if (skinnyKillCount % 10 == 0)
                     {
@@ -3148,6 +3251,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public boolean checkAndDamageBrain(Vector3f loc)
     {
+        if (!isHostClient)
+            return false;
+
         if (!brainActive || brain == null || brainHealth <= 0)
             return false;
 
@@ -3232,14 +3338,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void dropGrapplePickup(Vector3f pos)
     {
-        if (grapplePickup == null) return;
+        showGrapplePickup(pos);
 
-        grapplePickup.setLocalTranslation(
-            new Matrix4f().translation(pos.x, pos.y + 1.0f, pos.z)
-        );
-
-        grapplePickup.setLocalScale(new Matrix4f().scaling(0.08f));
-        grapplePickupActive = true;
+        if (protClient != null && isHostClient)
+            protClient.sendGrappleDrop(pos);
 
         System.out.println("Grapple pickup dropped");
     }
@@ -3251,12 +3353,35 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (player.getWorldLocation().distance(grapplePickup.getWorldLocation()) < 2.0f)
         {
             playerHasGrapple = true;
-            grapplePickupActive = false;
+            hideGrapplePickup();
 
-            grapplePickup.setLocalScale(new Matrix4f().scaling(0.0001f));
-            grapplePickup.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+            if (protClient != null)
+                protClient.sendGrappleTaken();
 
             System.out.println("Player picked up grapple");
+        }
+    }
+
+    private void showGrapplePickup(Vector3f pos)
+    {
+        if (grapplePickup == null) return;
+
+        grapplePickup.setLocalTranslation(
+            new Matrix4f().translation(pos.x, pos.y + 1.0f, pos.z)
+        );
+
+        grapplePickup.setLocalScale(new Matrix4f().scaling(0.08f));
+        grapplePickupActive = true;
+    }
+
+    private void hideGrapplePickup()
+    {
+        grapplePickupActive = false;
+
+        if (grapplePickup != null)
+        {
+            grapplePickup.setLocalScale(new Matrix4f().scaling(0.0001f));
+            grapplePickup.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
         }
     }
 
@@ -3397,6 +3522,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         playerInTractorBeam = false;
 
         Vector3f ufoPos = ufoWaveManager.getLargeUfoPosition();
+
+        if (protClient != null && isHostClient)
+            protClient.sendTractorBeamStart(ufoPos);
 
         tractorBeamTopY = ufoPos.y;
 
@@ -3696,10 +3824,84 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void sendSkinnyNetworkUpdates()
+    {
+        if (!isHostClient || protClient == null)
+            return;
+
+        for (int i = 0; i < activeSkinnys.size(); i++)
+        {
+            GameObject skinnyObj = activeSkinnys.get(i);
+
+            if (skinnyObj == null)
+                continue;
+
+            int enemyID = activeSkinnyNetworkIds.get(i);
+            Vector3f pos = skinnyObj.getWorldLocation();
+
+            float yaw = 0.0f;
+
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+            if (targetPos != null)
+            {
+                Vector3f toTarget = new Vector3f(targetPos).sub(pos);
+
+                if (toTarget.lengthSquared() > 0.001f)
+                    yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+            }
+
+            int health = activeSkinnyHealth.get(i);
+            boolean dead = activeSkinnyDead.get(i);
+
+            protClient.sendEnemyUpdate(enemyID, "SKINNY", pos, yaw, health, dead);
+        }
+    }
+
+    private void sendBrainNetworkUpdates()
+    {
+        if (!isHostClient || protClient == null || brain == null || mapSelection != 1)
+            return;
+
+        if (!brainActive && !brainDefeated)
+            return;
+
+        Vector3f pos = brain.getWorldLocation();
+
+        float yaw = 0.0f;
+
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+        if (targetPos != null)
+        {
+            Vector3f toTarget = new Vector3f(targetPos).sub(pos);
+
+            if (toTarget.lengthSquared() > 0.001f)
+                yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+        }
+
+        boolean dead = brainDefeated || brainHealth <= 0;
+
+        protClient.sendEnemyUpdate(
+            NETWORK_BRAIN_ID,
+            "BRAIN",
+            pos,
+            yaw,
+            brainHealth,
+            dead
+        );
+    }
+
     public void receiveNetworkEnemyUpdate(int enemyID, String enemyType, Vector3f pos, float yaw, int health, boolean dead)
     {
         if (isHostClient)
             return;
+
+        if (enemyType.equals("BRAIN"))
+        {
+            receiveNetworkBrainUpdate(pos, yaw, health, dead);
+            return;
+        }
 
         if (networkEnemyManager != null)
             networkEnemyManager.updateEnemy(enemyID, enemyType, pos, yaw, health, dead);
@@ -3723,12 +3925,97 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         gameAudio.playNpcPlasma(pos);
     }
 
-    public void receiveNetworkPlayerBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    public void receiveNetworkPlayerBullet(UUID shooterID, Vector3f pos, Vector3f dir, boolean isPlasma)
     {
         if (!isHostClient)
             return;
 
-        bulletManager.spawnPlayerBullet(pos, dir, isPlasma);
+        bulletManager.spawnNetworkPlayerBullet(shooterID, pos, dir, isPlasma);
+    }
+    
+    public void receiveCreditAward(int amount)
+    {
+        addPlayerCredits(amount);
+    }
+
+    public void receiveNetworkUfoWaveStart(Vector3f pos, int apeCount, int ufoIndex)
+    {
+        if (isHostClient)
+            return;
+
+        if (ufoWaveManager != null)
+            ufoWaveManager.startNetworkWave(pos, apeCount, ufoIndex);
+    }
+
+    public void receiveNetworkTractorBeamStart(Vector3f ufoPos)
+    {
+        if (isHostClient)
+            return;
+
+        tractorBeamActive = true;
+        playerInTractorBeam = false;
+
+        tractorBeamTopY = ufoPos.y;
+
+        tractorBeamCenter.set(
+            ufoPos.x,
+            ufoPos.y - (tractorBeamHeight * 0.5f),
+            ufoPos.z
+        );
+
+        if (tractorBeamLight != null)
+        {
+            tractorBeamLight.setLocation(new Vector3f(ufoPos.x, ufoPos.y - 1.0f, ufoPos.z));
+            tractorBeamLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+            tractorBeamLight.enable();
+        }
+    }
+
+    public void receiveNetworkGrappleDrop(Vector3f pos)
+    {
+        if (isHostClient)
+            return;
+
+        showGrapplePickup(pos);
+    }
+
+    public void receiveNetworkGrappleTaken()
+    {
+        hideGrapplePickup();
+    }
+
+    private void receiveNetworkBrainUpdate(Vector3f pos, float yaw, int health, boolean dead)
+    {
+        if (brain == null)
+            return;
+
+        brainHealth = health;
+
+        if (dead || health <= 0)
+        {
+            brainHealth = 0;
+            brainActive = false;
+            brainFloating = false;
+            brainDefeated = true;
+            brain.setLocalScale(new Matrix4f().scaling(0.0001f));
+            return;
+        }
+
+        boolean wasInactive = !brainActive;
+
+        brainActive = true;
+        brainFloating = true;
+        brainDefeated = false;
+
+        brain.setLocalTranslation(new Matrix4f().translation(pos));
+        brain.setLocalRotation(new Matrix4f().rotationY(yaw));
+        brain.setLocalScale(new Matrix4f().scaling(0.1f));
+
+        if (brainS != null && wasInactive)
+            brainS.playAnimation("FLOAT", 0.3f, AnimatedShape.EndType.LOOP, 0);
+
+        if (wasInactive)
+            startBossMusic();
     }
 
     // ========================================================
@@ -3791,6 +4078,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         return apeTx;
     }
+
+    public ObjShape getSkinnyShape()
+    {
+        return skinnyS;
+    }
+
+    public TextureImage getSkinnyTexture()
+    {
+        return skinnyTx;
+    }
+
     public int getAvatarSelection()
     {
         return avatarSelection;
