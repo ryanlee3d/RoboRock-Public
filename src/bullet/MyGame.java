@@ -189,8 +189,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private NetworkEnemyManager networkEnemyManager;
     private float enemyNetworkUpdateTimer = 0.0f;
     private static final float ENEMY_NETWORK_UPDATE_INTERVAL = 0.10f;
-    
 
+    private boolean networkWaveHasSpawnedEnemies = false;
+    private boolean ufoShopWindowUsedForCurrentWave = false;
+    
     // skyboxes
     private int spaceSkyBox, islandSkyBox, lushSkyBox, plainsSkyBox;
 
@@ -555,10 +557,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (player == null) return;
 
-        if (firstPersonMode)
-            player.setLocalScale(new Matrix4f().scaling(0.0001f));
-        else
-            player.setLocalScale(new Matrix4f().scaling(playerScale));
+        player.setLocalScale(new Matrix4f().scaling(playerScale));
     }
 
     private void spawnApe(Vector3f dropPos)
@@ -2486,15 +2485,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return activeApes.size() == 0;
 
         if (networkEnemyManager == null)
-            return true;
+            return false;
 
-        return networkEnemyManager.getLivingEnemyCount() == 0;
+        return networkWaveHasSpawnedEnemies && networkEnemyManager.getLivingEnemyCount() == 0;
     }
 
     private void startNextHostUfoWaveAndSync()
     {
         if (!isHostClient)
             return;
+
+        ufoShopWindowUsedForCurrentWave = false;
 
         ufoWaveManager.startNextWave();
 
@@ -2764,17 +2765,34 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         // if no apes alive, bring up shop, trigger next UFO, if last wave completed, trigger tractor beam
         if (mapSelection == 0 && !ufoWaveManager.isActive() && areUfoWaveEnemiesCleared())
         {
-            if (isHostClient && ufoWaveManager.isFinalWaveComplete())
+            if (isHostClient)
             {
-                startTractorBeam();
+                if (ufoWaveManager.isFinalWaveComplete())
+                {
+                    startTractorBeam();
+                }
+                else if (ufoWaveManager.getLastWaveApeCount() == 0)
+                {
+                    startNextHostUfoWaveAndSync();
+                }
+                else if (!shopState.isActive() && !ufoShopWindowUsedForCurrentWave)
+                {
+                    ufoShopWindowUsedForCurrentWave = true;
+                    shopState.startWindow(ufoWaveManager.getLastWaveTarget(), terr);
+                }
             }
-            else if (ufoWaveManager.getLastWaveApeCount() == 0)
+            else
             {
-                startNextHostUfoWaveAndSync();
-            }
-            else if (!shopState.isActive())
-            {
-                shopState.startWindow(ufoWaveManager.getLastWaveTarget(), terr);
+                if (ufoWaveManager.getLastWaveApeCount() > 0
+                    && !shopState.isActive()
+                    && !ufoShopWindowUsedForCurrentWave)
+                {
+                    ufoShopWindowUsedForCurrentWave = true;
+                    shopState.startWindow(ufoWaveManager.getLastWaveTarget(), terr);
+
+                    // Prevent the non-host shop from reopening before the next host wave arrives.
+                    networkWaveHasSpawnedEnemies = false;
+                }
             }
         }
 
@@ -3099,6 +3117,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     void toggleFirstPersonMode()
     {
         firstPersonMode = !firstPersonMode;
+        updatePlayerVisibilityForCameraMode();
     }
 
     void togglePhysicsDebug()
@@ -4052,6 +4071,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return;
         }
 
+        if (enemyType.equals("APE"))
+            networkWaveHasSpawnedEnemies = true;
+
         if (networkEnemyManager != null)
             networkEnemyManager.updateEnemy(enemyID, enemyType, pos, yaw, health, dead);
     }
@@ -4086,11 +4108,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         addPlayerCredits(amount);
     }
-
+    
     public void receiveNetworkUfoWaveStart(Vector3f pos, int apeCount, int ufoIndex)
     {
         if (isHostClient)
             return;
+
+        networkWaveHasSpawnedEnemies = false;
+        ufoShopWindowUsedForCurrentWave = false;
 
         if (ufoWaveManager != null)
             ufoWaveManager.startNetworkWave(pos, apeCount, ufoIndex);
