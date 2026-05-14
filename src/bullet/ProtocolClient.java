@@ -66,8 +66,11 @@ public class ProtocolClient extends GameConnectionClient
                 float yaw = 0.0f;
                 if (tokens.length > 6)
                     yaw = Float.parseFloat(tokens[6]);
+                int weaponIndex = 0;
+                if (tokens.length > 7)
+                    weaponIndex = Integer.parseInt(tokens[7]);
 
-                ghostManager.createGhost(ghostID, pos, avatarSelection, yaw);
+                ghostManager.createGhost(ghostID, pos, avatarSelection, yaw, weaponIndex);
             }
 
             // MOVE
@@ -88,8 +91,11 @@ public class ProtocolClient extends GameConnectionClient
                 float yaw = 0.0f;
                 if (tokens.length > 6)
                     yaw = Float.parseFloat(tokens[6]);
+                int weaponIndex = 0;
+                if (tokens.length > 7)
+                    weaponIndex = Integer.parseInt(tokens[7]);
 
-                ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection, yaw);
+                ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection, yaw, weaponIndex);
             }
 
             // BYE
@@ -124,7 +130,8 @@ public class ProtocolClient extends GameConnectionClient
                     "," + pos.y() +
                     "," + pos.z() +
                     "," + game.getAvatarSelection() +
-                    "," + game.getPlayerYaw();
+                    "," + game.getPlayerYaw() +
+                    "," + game.getCurrentWeaponIndex();
 
             sendPacket(msg);
         }
@@ -143,7 +150,8 @@ public class ProtocolClient extends GameConnectionClient
                     "," + pos.y() +
                     "," + pos.z() +
                     "," + game.getAvatarSelection() +
-                    "," + game.getPlayerYaw();
+                    "," + game.getPlayerYaw() +
+                    "," + game.getCurrentWeaponIndex();
 
             sendPacket(msg);
         }

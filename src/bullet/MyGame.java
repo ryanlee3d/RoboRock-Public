@@ -3633,6 +3633,168 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         return (float)java.lang.Math.atan2(flatX, flatZ);
     }
+    public int getCurrentWeaponIndex()
+    {
+        return weaponInventory.getCurrentWeapon().ordinal();
+    }
+
+    public ObjShape getWeaponShape(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return knifeS;
+            case PISTOL:
+                return pistolS;
+            case PLASMA_RIFLE:
+                return plasmaRifleS;
+            case RIFLE:
+                return rifleS;
+            case SHOTGUN:
+                return shotGunS;
+            default:
+                return pistolS;
+        }
+    }
+
+    public TextureImage getWeaponTexture(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return knifeTx;
+            case PISTOL:
+                return pistolTx;
+            case PLASMA_RIFLE:
+                return plasmaRifleTx;
+            case RIFLE:
+                return rifleTx;
+            case SHOTGUN:
+                return shotGunTx;
+            default:
+                return pistolTx;
+        }
+    }
+
+    public Vector3f getGhostWeaponOffset(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case PISTOL:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case PLASMA_RIFLE:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case RIFLE:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case SHOTGUN:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y - 0.25f,
+                    weaponPos.z - 0.20f
+                );
+
+            default:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+        }
+    }
+
+    public float getGhostWeaponScale(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return knifeWeaponScale;
+
+            case PISTOL:
+                return weaponScale;
+
+            case PLASMA_RIFLE:
+                return weaponScale;
+
+            case RIFLE:
+                return weaponScale;
+
+            case SHOTGUN:
+                return weaponScale + 0.8f;
+
+            default:
+                return weaponScale;
+        }
+    }
+
+    public Matrix4f getGhostWeaponOrientationCorrection(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return new Matrix4f()
+                    .rotateY((float)java.lang.Math.toRadians(-90.0f))
+                    .rotateZ((float)java.lang.Math.toRadians(25.0f));
+
+            case RIFLE:
+                return new Matrix4f()
+                    .rotateX((float)java.lang.Math.toRadians(90.0f));
+
+            case SHOTGUN:
+                return new Matrix4f()
+                    .rotateY((float)java.lang.Math.toRadians(90.0f))
+                    .rotateX((float)java.lang.Math.toRadians(90.0f));
+
+            default:
+                return new Matrix4f();
+        }
+    }
 
     //-------------------------------
     //DEBUGGING
