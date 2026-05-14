@@ -61,7 +61,7 @@ public class GhostManager
         Vector3f offset = game.getGhostWeaponOffset(weaponIndex);
 
         weapon.setLocalTranslation(new Matrix4f().translation(offset));
-        weapon.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(90.0f)));
+        weapon.setLocalRotation(new Matrix4f().rotationY(0.0f));
         weapon.setLocalScale(new Matrix4f().scaling(game.getGhostWeaponScale(weaponIndex)));
 
         weapon.getRenderStates().setModelOrientationCorrection(
@@ -74,9 +74,9 @@ public class GhostManager
         GhostAvatar existingGhost = findAvatar(id);
         if (existingGhost != null)
         {
-            System.out.println("Ghost already exists: " + id);
             existingGhost.setPosition(pos);
             existingGhost.setTextureImage(game.getRobotTexture(avatarSelection));
+            existingGhost.getRenderStates().setModelOrientationCorrection(new Matrix4f().rotationY((float)java.lang.Math.toRadians(270.0f)));
             existingGhost.setLocalRotation(new Matrix4f().rotationY(yaw));
             updateGhostWeapon(existingGhost, id, weaponIndex);
             return;
@@ -86,6 +86,8 @@ public class GhostManager
         TextureImage t = game.getRobotTexture(avatarSelection);
 
         GhostAvatar ghost = new GhostAvatar(id, s, t, pos);
+
+        ghost.getRenderStates().setModelOrientationCorrection(new Matrix4f().rotationY((float)java.lang.Math.toRadians(270.0f)));
 
         Matrix4f scale = new Matrix4f().scaling(game.getPlayerScale());
         ghost.setLocalScale(scale);
@@ -153,7 +155,7 @@ public class GhostManager
         {
             g.setPosition(pos);
             g.setTextureImage(game.getRobotTexture(avatarSelection));
-            g.setLocalRotation(new Matrix4f().rotationY(yaw + (float)java.lang.Math.toRadians(270.0f)));
+            g.setLocalRotation(new Matrix4f().rotationY(yaw));
             updateGhostWeapon(g, id, weaponIndex);
         }
         else
