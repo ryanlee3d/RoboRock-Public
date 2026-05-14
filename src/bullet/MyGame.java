@@ -706,7 +706,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         Vector3f bestTarget = null;
         float bestDistSq = Float.MAX_VALUE;
 
-        if (player != null)
+        if (player != null && pHealth > 0 && !playerDeathScreenActive)
         {
             Vector3f playerPos = player.getWorldLocation();
 
@@ -741,6 +741,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         return bestTarget;
     }
 
+    private boolean hasAnyLivingPlayerOrGhostTarget()
+    {
+        if (player != null && pHealth > 0 && !playerDeathScreenActive)
+            return true;
+
+        if (gm != null)
+            return gm.getClosestGhostPosition(new Vector3f(0.0f, 0.0f, 0.0f)) != null;
+
+        return false;
+    }
+
     private class PlayerAliveCondition extends BTCondition
     {
         public PlayerAliveCondition()
@@ -750,7 +761,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         protected boolean check()
         {
-            return player != null && pHealth > 0;
+            return hasAnyLivingPlayerOrGhostTarget();
         }
     }
 
@@ -2489,8 +2500,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
         elapsTime += dt;
 
-        if (playerDeathScreenActive)
+        if (playerDeathScreenActive && !isHostClient)
         {
+            processNetworking(dt);
+
+            if (gm != null)
+                gm.updateGhostAnimations(dt);
+
             showDeathContinueHud();
             return;
         }
@@ -2602,12 +2618,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             updateDeadApes(dt);
 
         bulletManager.update(dt);
-
-        if (playerDeathScreenActive)
-        {
-            showDeathContinueHud();
-            return;
-        }
 
         updateTractorBeam(dt);
         
@@ -2748,8 +2758,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         overheadCameraController.applyTo(camOver, playerpos);
 
+        if (playerDeathScreenActive)
+        {
+            showDeathContinueHud();
+            return;
+        }
+
         engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
-        engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
 
         /*
         // Old bottom debug HUD. Re-enable this if you need player position / tractor beam status again.
@@ -3016,6 +3031,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public void movePlayerPhysics(Vector3f moveDir, float speed)
     {
+        if (playerDeathScreenActive) return;
+        if (gameState != GameState.PLAYING) return;
         if (playerP == null) return;
 
         Vector3f dir = new Vector3f(moveDir.x, 0f, moveDir.z);
