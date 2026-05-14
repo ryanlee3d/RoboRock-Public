@@ -51,6 +51,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private float sensitvity = 0.25f;
 
+    // gamepad
+    private static final float GAMEPAD_DEADZONE = 0.25f;
+    private static final float GAMEPAD_LOOK_SPEED = 120.0f;
+    private static final long GAMEPAD_MENU_REPEAT_MS = 180L;
+
+    private float gamepadLookX = 0.0f;
+    private float gamepadLookY = 0.0f;
+    private boolean gamepadFireHeld = false;
+    private boolean gamepadFireSeenThisFrame = false;
+    private long lastGamepadMenuInputTime = 0L;
+
     private double lastFrameTime, currFrameTime, elapsTime;
     private IAction restartGame;
 
@@ -1739,6 +1750,355 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             engine.disablePhysicsWorldRender();
     }
 
+    private boolean isButtonPressed(net.java.games.input.Event e)
+    {
+        return e != null && e.getValue() > 0.5f;
+    }
+
+    private boolean acceptGamepadMenuInput()
+    {
+        long now = System.currentTimeMillis();
+        if (now - lastGamepadMenuInputTime < GAMEPAD_MENU_REPEAT_MS)
+            return false;
+
+        lastGamepadMenuInputTime = now;
+        return true;
+    }
+
+    private void menuMoveUp()
+    {
+        menu.moveUp();
+        menuSelection = menu.getSelectedIndex();
+    }
+
+    private void menuMoveDown()
+    {
+        menu.moveDown();
+        menuSelection = menu.getSelectedIndex();
+    }
+
+    private void menuPreviousMap()
+    {
+        if (menu.getSelectedIndex() == 1)
+        {
+            menu.previousMap();
+            setMapSelection(menu.getSelectedMapIndex());
+            applyMapSelection();
+        }
+    }
+
+    private void menuNextMap()
+    {
+        if (menu.getSelectedIndex() == 1)
+        {
+            menu.nextMap();
+            setMapSelection(menu.getSelectedMapIndex());
+            applyMapSelection();
+        }
+    }
+
+    private void activateCurrentMenuSelection()
+    {
+        switch (menu.activateSelection())
+        {
+            case START_GAME:
+                setMapSelection(menu.getSelectedMapIndex());
+                applyMapSelection();
+                switchTerrainPhysics();
+
+                if (mapSelection == 1)
+                {
+                    hideMapZeroBuildings();
+                    pendingCaseOneStart = true;
+                    pendingSkinnySpawn = true;
+                }
+
+                gameState = GameState.PLAYING;
+                firstPersonMode = true;
+                physicsDebug = false;
+                engine.disablePhysicsWorldRender();
+
+                engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
+                engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
+                engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+                engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
+                break;
+
+            case SELECT_MAP:
+                menu.nextMap();
+                setMapSelection(menu.getSelectedMapIndex());
+                applyMapSelection();
+                break;
+
+            case MULTIPLAYER:
+            case OPTIONS:
+                break;
+
+            case QUIT:
+                isShuttingDown = true;
+                mouseModeInitiated = false;
+                isRecentering = false;
+                gameAudio.releaseAll();
+                shutdown();
+                System.exit(0);
+                break;
+
+            default:
+                System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
+                break;
+        }
+    }
+
+    private void beginFireInput()
+    {
+        if (gameState != GameState.PLAYING) return;
+
+        if (!weaponInventory.currentUsesBullets()) return;
+        if (weaponInventory.isReloading()) return;
+        if (weaponInventory.getCurrentWeapon() == WeaponType.SHOTGUN && isShotgunPumping()) return;
+
+        if (weaponInventory.getCurrentMagazineAmmo() <= 0)
+        {
+            weaponInventory.beginReload();
+            return;
+        }
+
+        if (weaponInventory.isAutomaticWeapon())
+        {
+            isFiring = true;
+            if (!weaponInventory.isCoolingDown())
+                fireCurrentWeapon();
+        }
+        else
+        {
+            if (!weaponInventory.isCoolingDown())
+                fireCurrentWeapon();
+        }
+    }
+
+    private void endFireInput()
+    {
+        isFiring = false;
+        gameAudio.stopRifleLoopSound();
+    }
+
+    private void markGamepadFireHeld()
+    {
+        gamepadFireSeenThisFrame = true;
+
+        if (!gamepadFireHeld)
+        {
+            gamepadFireHeld = true;
+            beginFireInput();
+        }
+    }
+
+    private void finishGamepadFireIfReleased()
+    {
+        if (gamepadFireHeld && !gamepadFireSeenThisFrame)
+        {
+            gamepadFireHeld = false;
+            endFireInput();
+        }
+    }
+
+    private void applyGamepadLook(float dt)
+    {
+        if (gameState != GameState.PLAYING || orbitCam == null) return;
+
+        if (java.lang.Math.abs(gamepadLookX) > GAMEPAD_DEADZONE)
+            orbitCam.addAzimuth(-gamepadLookX * GAMEPAD_LOOK_SPEED * dt);
+
+        if (java.lang.Math.abs(gamepadLookY) > GAMEPAD_DEADZONE)
+            orbitCam.addElevation(gamepadLookY * GAMEPAD_LOOK_SPEED * dt);
+    }
+
+    private class GamepadLookXAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            gamepadLookX = e.getValue();
+        }
+    }
+
+    private class GamepadLookYAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            gamepadLookY = e.getValue();
+        }
+    }
+
+    private class GamepadFireAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (e.getValue() > GAMEPAD_DEADZONE)
+                markGamepadFireHeld();
+        }
+    }
+
+    private class GamepadButtonFireAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            markGamepadFireHeld();
+        }
+    }
+
+    private class GamepadReloadAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+                weaponInventory.beginReload();
+        }
+    }
+
+    private class GamepadGrappleAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+                startPlayerGrapple();
+        }
+    }
+
+    private class GamepadNextWeaponAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            {
+                weaponInventory.selectNext();
+                updateWeaponVisibility();
+            }
+        }
+    }
+
+    private class GamepadPreviousWeaponAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            {
+                weaponInventory.selectPrevious();
+                updateWeaponVisibility();
+            }
+        }
+    }
+
+    private class GamepadAcceptAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (!isButtonPressed(e)) return;
+
+            if (playerDeathScreenActive)
+            {
+                continueAfterPlayerDeath();
+                return;
+            }
+
+            if (gameState == GameState.MENU)
+                activateCurrentMenuSelection();
+        }
+    }
+
+    private class GamepadLeftStickYAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            float v = e.getValue();
+
+            if (java.lang.Math.abs(v) < GAMEPAD_DEADZONE)
+                return;
+
+            if (gameState == GameState.MENU)
+            {
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) menuMoveUp();
+                else menuMoveDown();
+
+                return;
+            }
+
+            if (gameState != GameState.PLAYING || cam == null)
+                return;
+
+            Vector3f camN = cam.getN();
+            Vector3f forward = new Vector3f(camN.x, 0.0f, camN.z);
+
+            if (forward.lengthSquared() < 0.000001f)
+                return;
+
+            forward.normalize();
+
+            // stick up is usually negative, so this makes up = forward
+            forward.mul(-v);
+
+            movePlayerPhysics(forward, currentMoveSpeed);
+
+            if (protClient != null && player != null)
+                protClient.sendMoveMessage(player.getWorldLocation());
+        }
+    }
+
+    private class GamepadLeftStickXAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            float v = e.getValue();
+
+            if (java.lang.Math.abs(v) < GAMEPAD_DEADZONE)
+                return;
+
+            if (gameState == GameState.MENU)
+            {
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) menuPreviousMap();
+                else menuNextMap();
+
+                return;
+            }
+
+            if (gameState != GameState.PLAYING || cam == null)
+                return;
+
+            Vector3f camN = cam.getN();
+            Vector3f forward = new Vector3f(camN.x, 0.0f, camN.z);
+
+            if (forward.lengthSquared() < 0.000001f)
+                return;
+
+            forward.normalize();
+
+            Vector3f right = new Vector3f(forward.z, 0.0f, -forward.x);
+            right.normalize();
+
+            // stick right is usually positive, this matches your D key direction
+            right.mul(-v);
+
+            movePlayerPhysics(right, currentMoveSpeed);
+
+            if (protClient != null && player != null)
+                protClient.sendMoveMessage(player.getWorldLocation());
+        }
+    }
+
     @Override
     public void initializeGame()
     {
@@ -1829,6 +2189,40 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.B,togglePlasmaFireMode,
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
 
+        // gamepad left stick: gameplay movement + menu navigation
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.Y, new GamepadLeftStickYAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.X, new GamepadLeftStickXAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // gamepad look: right stick
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.RX, new GamepadLookXAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.RY, new GamepadLookYAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // fire: right trigger if your controller reports it as Z or RZ
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.Z, new GamepadFireAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.RZ, new GamepadFireAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // backup fire: right bumper
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._5, new GamepadButtonFireAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // buttons: A accept, B grapple, X reload, Y next weapon, LB previous weapon
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._0, new GamepadAcceptAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._1, new GamepadGrappleAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._2, new GamepadReloadAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._3, new GamepadNextWeaponAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._4, new GamepadPreviousWeaponAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+
         setupNetworking();
         initAudio();
         setEarParameters();
@@ -1849,6 +2243,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             engine.getHUDmanager().setHUD1(menu.getTitleText(), titleColor, 520, 620);
             engine.getHUDmanager().setHUD2(menu.getMenuText(), bodyColor, 120, 560);
             engine.getHUDmanager().setHUD3(menu.getFooterText(), footerColor, 420, 120);
+
+            if (im != null)
+                im.update(0.016f);
             return;
         }
 
@@ -1885,7 +2282,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         setEarParameters();
         
         currentMoveDir.set(0, 0, 0);
+        gamepadFireSeenThisFrame = false;
+
         im.update(dt);
+
+        applyGamepadLook(dt);
+        finishGamepadFireIfReleased();
 
         updateLevelTwoArrivalEvent(dt);
 
@@ -2137,47 +2539,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     }
                     break;
                 case KeyEvent.VK_ENTER:
-                    switch (menu.activateSelection())
-                    {
-                        case START_GAME:
-                            setMapSelection(menu.getSelectedMapIndex());
-                            applyMapSelection();
-                            switchTerrainPhysics();
-                            if (mapSelection == 1)
-                            {
-                                hideMapZeroBuildings();
-                                pendingCaseOneStart = true;
-                                pendingSkinnySpawn = true;
-                            }
-                            gameState = GameState.PLAYING;
-                            firstPersonMode = true;
-                            physicsDebug = false;
-                            engine.disablePhysicsWorldRender();
-                            engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
-                            engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
-                            engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
-                            engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
-                            break;
-                        case SELECT_MAP:
-                            menu.nextMap();
-                            setMapSelection(menu.getSelectedMapIndex());
-                            applyMapSelection();
-                            break;
-                        case MULTIPLAYER:
-                        case OPTIONS:
-                            break;
-                        case QUIT:
-                            isShuttingDown = true;
-                            mouseModeInitiated = false;
-                            isRecentering = false;
-                            gameAudio.releaseAll();
-                            shutdown();
-                            System.exit(0);
-                            return;
-                        default:
-                            System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
-                            break;
-                    }
+                    activateCurrentMenuSelection();
                     break;
                 default:
                     break;
@@ -2270,46 +2632,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (gameState != GameState.PLAYING) return;
         if (e.getButton() != MouseEvent.BUTTON1) return;
 
-        if (!weaponInventory.currentUsesBullets()) return;
-        if (weaponInventory.isReloading()) return;
-        if (weaponInventory.getCurrentWeapon() == WeaponType.SHOTGUN && isShotgunPumping()) return;
-
-        if (weaponInventory.getCurrentMagazineAmmo() <= 0)
-        {
-            weaponInventory.beginReload();
-            return;
-        }
-
-        if (weaponInventory.isAutomaticWeapon())
-        {
-            isFiring = true;
-            if (!weaponInventory.isCoolingDown())
-                fireCurrentWeapon();
-        }
-        else
-        {
-            if (!weaponInventory.isCoolingDown())
-                fireCurrentWeapon();
-        }
+        beginFireInput();
     }
 
     @Override
     public void mouseReleased(MouseEvent e)
     {
         if (e.getButton() == MouseEvent.BUTTON1)
-        {
-            isFiring = false;
-            gameAudio.stopRifleLoopSound();
-        }
-    }
-
-    @Override public void mouseClicked(MouseEvent e) {}
-    @Override public void mouseEntered(MouseEvent e) {}
-    @Override public void mouseExited(MouseEvent e) {}
-    @Override
-    public void mouseDragged(MouseEvent e)
-    {
-        handleMouseLook(e);
+            endFireInput();
     }
 
     void toggleFirstPersonMode()
