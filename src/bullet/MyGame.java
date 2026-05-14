@@ -33,6 +33,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int menuSelection = 0;
     private final MainMenu menu = new MainMenu();
 
+    private int avatarSelection = 0;
+    private final String[] avatarNames = {
+        "Blue",
+        "White",
+        "Dark",
+        "Grey"
+    };
+
     private boolean physicsDebug = true;
     private final GameAudio gameAudio = new GameAudio();
     private final PickupManager pickupManager = new PickupManager(this);
@@ -95,6 +103,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
         heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx, brainTx, grappleGunTx;
+
+    private TextureImage[] robotTextures = new TextureImage[4];
 
     //DEBUG
     private GameObject debugSkinny;
@@ -1472,7 +1482,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     @Override
     public void loadTextures()
     {
-        playerTx = new TextureImage("robot.jpg");
+        robotTextures[0] = new TextureImage("robot.jpg");
+        robotTextures[1] = new TextureImage("robot1.jpg");
+        robotTextures[2] = new TextureImage("robot2.jpg");
+        robotTextures[3] = new TextureImage("robot3.jpg");
+
+        playerTx = robotTextures[avatarSelection];
         ghostT = playerTx;
 
         skinnyTx = new TextureImage("skinny.jpg");
@@ -1802,26 +1817,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         switch (menu.activateSelection())
         {
             case START_GAME:
-                setMapSelection(menu.getSelectedMapIndex());
-                applyMapSelection();
-                switchTerrainPhysics();
-
-                if (mapSelection == 1)
-                {
-                    hideMapZeroBuildings();
-                    pendingCaseOneStart = true;
-                    pendingSkinnySpawn = true;
-                }
-
-                gameState = GameState.PLAYING;
-                firstPersonMode = true;
-                physicsDebug = false;
-                engine.disablePhysicsWorldRender();
-
-                engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
-                engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
-                engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
-                engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
+                gameState = GameState.ROBOT_SELECT;
+                applyAvatarSelectionTexture();
                 break;
 
             case SELECT_MAP:
@@ -2009,8 +2006,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 return;
             }
 
-            if (gameState == GameState.MENU)
-                activateCurrentMenuSelection();
+        if (gameState == GameState.MENU)
+        {
+            activateCurrentMenuSelection();
+            return;
+        }
+
+        if (gameState == GameState.ROBOT_SELECT)
+        {
+            startSelectedGame();
+            return;
+        }
         }
     }
 
@@ -2075,6 +2081,17 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 return;
             }
 
+            if (gameState == GameState.ROBOT_SELECT)
+            {
+                if (java.lang.Math.abs(v) < GAMEPAD_DEADZONE) return;
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) previousAvatarSelection();
+                else nextAvatarSelection();
+
+                return;
+            }
+
             if (gameState != GameState.PLAYING || cam == null)
                 return;
 
@@ -2089,7 +2106,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             Vector3f right = new Vector3f(forward.z, 0.0f, -forward.x);
             right.normalize();
 
-            // stick right is usually positive, this matches your D key direction
+            // negate
             right.mul(-v);
 
             movePlayerPhysics(right, currentMoveSpeed);
@@ -2097,6 +2114,77 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             if (protClient != null && player != null)
                 protClient.sendMoveMessage(player.getWorldLocation());
         }
+    }
+
+    private String getRobotSelectText()
+    {
+        StringBuilder sb = new StringBuilder("Pick your robot: ");
+
+        for (int i = 0; i < avatarNames.length; i++)
+        {
+            if (i > 0) sb.append("   ");
+
+            if (i == avatarSelection)
+                sb.append("<").append(avatarNames[i]).append(">");
+            else
+                sb.append(avatarNames[i]);
+        }
+
+        return sb.toString();
+    }
+
+    private void previousAvatarSelection()
+    {
+        avatarSelection = (avatarSelection - 1 + avatarNames.length) % avatarNames.length;
+        applyAvatarSelectionTexture();
+    }
+
+    private void nextAvatarSelection()
+    {
+        avatarSelection = (avatarSelection + 1) % avatarNames.length;
+        applyAvatarSelectionTexture();
+    }
+
+    private void applyAvatarSelectionTexture()
+    {
+        if (robotTextures == null) return;
+        if (avatarSelection < 0 || avatarSelection >= robotTextures.length) return;
+        if (robotTextures[avatarSelection] == null) return;
+
+        playerTx = robotTextures[avatarSelection];
+        ghostT = playerTx;
+
+        if (player != null)
+            player.setTextureImage(playerTx);
+    }
+
+    private void startSelectedGame()
+    {
+        setMapSelection(menu.getSelectedMapIndex());
+        applyMapSelection();
+        switchTerrainPhysics();
+
+        applyAvatarSelectionTexture();
+
+        if (mapSelection == 1)
+        {
+            hideMapZeroBuildings();
+            pendingCaseOneStart = true;
+            pendingSkinnySpawn = true;
+        }
+
+        gameState = GameState.PLAYING;
+        firstPersonMode = true;
+        physicsDebug = false;
+        engine.disablePhysicsWorldRender();
+
+        engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
+        engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
+        engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
+
+        if (protClient != null)
+            protClient.sendCreateMessage(getPlayerPosition());
     }
 
     @Override
@@ -2246,6 +2334,37 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (im != null)
                 im.update(0.016f);
+            return;
+        }
+
+        if (gameState == GameState.ROBOT_SELECT)
+        {
+            mouseModeInitiated = false;
+
+            engine.getHUDmanager().setHUD1(
+                "ROBOT SELECT",
+                new Vector3f(0.95f, 0.8f, 0.45f),
+                500,
+                620
+            );
+
+            engine.getHUDmanager().setHUD2(
+                getRobotSelectText(),
+                new Vector3f(1.0f, 1.0f, 1.0f),
+                300,
+                560
+            );
+
+            engine.getHUDmanager().setHUD3(
+                "Use A/D or LEFT STICK X to choose, ENTER/A button to start",
+                new Vector3f(0.7f, 0.9f, 0.7f),
+                300,
+                120
+            );
+
+            if (im != null)
+                im.update(0.016f);
+
             return;
         }
 
@@ -2544,6 +2663,39 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 default:
                     break;
             }
+
+            super.keyPressed(e);
+            return;
+        }
+
+        if (gameState == GameState.ROBOT_SELECT)
+        {
+            switch (e.getKeyCode())
+            {
+                case KeyEvent.VK_A:
+                case KeyEvent.VK_LEFT:
+                    previousAvatarSelection();
+                    break;
+
+                case KeyEvent.VK_D:
+                case KeyEvent.VK_RIGHT:
+                    nextAvatarSelection();
+                    break;
+
+                case KeyEvent.VK_ENTER:
+                    startSelectedGame();
+                    break;
+
+                case KeyEvent.VK_ESCAPE:
+                    gameState = GameState.MENU;
+                    break;
+
+                default:
+                    break;
+            }
+
+            super.keyPressed(e);
+            return;
         }
 
         if (gameState == GameState.PLAYING)
@@ -2818,7 +2970,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                             apeP.applyTorque(0.0f, 0.0f, 35.0f);
                         }
 
-                        addPlayerCredits(new Random().nextInt(10)); // Reward for kill
+                        addPlayerCredits(25 + new Random().nextInt(26)); // 25-50 credits
                     }
                     return true;
                 }
@@ -3440,6 +3592,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public GhostManager getGhostManager() { return gm; }
     public ObjShape getGhostShape() { return ghostS; }
     public TextureImage getGhostTexture() { return ghostT; }
+    public int getAvatarSelection()
+    {
+        return avatarSelection;
+    }
+
+    public TextureImage getRobotTexture(int selection)
+    {
+        if (selection < 0 || selection >= robotTextures.length)
+            selection = 0;
+
+        if (robotTextures[selection] == null)
+            return playerTx;
+
+        return robotTextures[selection];
+    }
 
     //-------------------------------
     //DEBUGGING

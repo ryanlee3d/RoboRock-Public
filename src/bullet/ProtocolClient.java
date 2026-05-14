@@ -49,10 +49,9 @@ public class ProtocolClient extends GameConnectionClient
             }
 
             // CREATE or DETAILS
-            if (command.equals("create") || command.equals("ghostDetails"))
+            if (command.equals("create") || command.equals("ghostDetails") || command.equals("GhostDetails"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
-                // Ignore our own replicated packets so we do not spawn a ghost for self.
                 if (ghostID.equals(id)) return;
 
                 Vector3f pos = new Vector3f(
@@ -61,14 +60,17 @@ public class ProtocolClient extends GameConnectionClient
                         Float.parseFloat(tokens[4])
                 );
 
-                ghostManager.createGhost(ghostID, pos);
+                int avatarSelection = 0;
+                if (tokens.length > 5)
+                    avatarSelection = Integer.parseInt(tokens[5]);
+
+                ghostManager.createGhost(ghostID, pos, avatarSelection);
             }
 
             // MOVE
             if (command.equals("move"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
-                // Ignore our own replicated packets so local movement remains authoritative.
                 if (ghostID.equals(id)) return;
 
                 Vector3f pos = new Vector3f(
@@ -77,7 +79,11 @@ public class ProtocolClient extends GameConnectionClient
                         Float.parseFloat(tokens[4])
                 );
 
-                ghostManager.updateGhostAvatar(ghostID, pos);
+                int avatarSelection = 0;
+                if (tokens.length > 5)
+                    avatarSelection = Integer.parseInt(tokens[5]);
+
+                ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection);
             }
 
             // BYE
@@ -110,7 +116,8 @@ public class ProtocolClient extends GameConnectionClient
             String msg = "create," + id +
                     "," + pos.x() +
                     "," + pos.y() +
-                    "," + pos.z();
+                    "," + pos.z() +
+                    "," + game.getAvatarSelection();
 
             sendPacket(msg);
         }
@@ -127,7 +134,8 @@ public class ProtocolClient extends GameConnectionClient
             String msg = "move," + id +
                     "," + pos.x() +
                     "," + pos.y() +
-                    "," + pos.z();
+                    "," + pos.z() +
+                    "," + game.getAvatarSelection();
 
             sendPacket(msg);
         }

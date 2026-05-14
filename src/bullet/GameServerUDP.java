@@ -16,10 +16,12 @@ public class GameServerUDP extends GameConnectionServer<UUID>
     // Tracks the latest known position for each connected client so late joiners
     // can be sent ghosts for players who were already in the session.
     private Map<UUID, Vector3f> clientPositions;
+    private Map<UUID, Integer> clientAvatarSelections;
     public GameServerUDP(int localPort) throws IOException
     {
         super(localPort, ProtocolType.UDP);
         clientPositions = new java.util.concurrent.ConcurrentHashMap<>();
+        clientAvatarSelections = new java.util.concurrent.ConcurrentHashMap<>();
         System.out.println("UDP server started on port " + localPort);
     }
 
@@ -59,9 +61,14 @@ public class GameServerUDP extends GameConnectionServer<UUID>
             {
                 UUID clientID = UUID.fromString(msgTokens[1]);
                 String[] pos = { msgTokens[2], msgTokens[3], msgTokens[4] };
-                
+                int avatarSelection = 0;
+
+                if (msgTokens.length > 5)
+                    avatarSelection = Integer.parseInt(msgTokens[5]);
+
                 storeClientPosition(clientID, pos);
-                sendCreateMessages(clientID, pos);
+                clientAvatarSelections.put(clientID, avatarSelection);
+                sendCreateMessages(clientID, pos, avatarSelection);
             }
 
             // MOVE
@@ -69,9 +76,15 @@ public class GameServerUDP extends GameConnectionServer<UUID>
             {
                 UUID clientID = UUID.fromString(msgTokens[1]);
                 String[] pos = { msgTokens[2], msgTokens[3], msgTokens[4] };
+                int avatarSelection = clientAvatarSelections.getOrDefault(clientID, 0);
+
+                if (msgTokens.length > 5)
+                    avatarSelection = Integer.parseInt(msgTokens[5]);
 
                 storeClientPosition(clientID, pos);
-                sendMoveMessages(clientID, pos);
+                clientAvatarSelections.put(clientID, avatarSelection);
+                sendMoveMessages(clientID, pos, avatarSelection);
+
             }
 
             // BYE
@@ -80,6 +93,7 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 UUID clientID = UUID.fromString(msgTokens[1]);
 
                 clientPositions.remove(clientID);
+                clientAvatarSelections.remove(clientID);
                 sendByeMessages(clientID);
                 removeClient(clientID);
 
@@ -110,14 +124,15 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         }
     }
 
-    public void sendCreateMessages(UUID clientID, String[] position)
+    public void sendCreateMessages(UUID clientID, String[] position, int avatarSelection)
     {
         try
         {
             String message = "create," + clientID +
                     "," + position[0] +
                     "," + position[1] +
-                    "," + position[2];
+                    "," + position[2] +
+                    "," + avatarSelection;
 
             forwardPacketToAll(message, clientID);
         }
@@ -140,10 +155,13 @@ public class GameServerUDP extends GameConnectionServer<UUID>
             {
                 // "GhostDetails" is used to handle ghosts that
                 // existed before this client joined.
-                String message = "GhostDetails," + remoteID +
+                int avatarSelection = clientAvatarSelections.getOrDefault(remoteID, 0);
+
+                String message = "ghostDetails," + remoteID +
                         "," + pos.x() +
                         "," + pos.y() +
-                        "," + pos.z();
+                        "," + pos.z() +
+                        "," + avatarSelection;
                 sendPacket(message, clientID);
             }
             catch (IOException e)
@@ -153,14 +171,15 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         }
     }
 
-    public void sendMoveMessages(UUID clientID, String[] position)
+    public void sendMoveMessages(UUID clientID, String[] position, int avatarSelection)
     {
         try
         {
             String message = "move," + clientID +
                     "," + position[0] +
                     "," + position[1] +
-                    "," + position[2];
+                    "," + position[2] +
+                    "," + avatarSelection;
 
             forwardPacketToAll(message, clientID);
         }
