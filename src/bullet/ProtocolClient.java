@@ -63,8 +63,11 @@ public class ProtocolClient extends GameConnectionClient
                 int avatarSelection = 0;
                 if (tokens.length > 5)
                     avatarSelection = Integer.parseInt(tokens[5]);
+                float yaw = 0.0f;
+                if (tokens.length > 6)
+                    yaw = Float.parseFloat(tokens[6]);
 
-                ghostManager.createGhost(ghostID, pos, avatarSelection);
+                ghostManager.createGhost(ghostID, pos, avatarSelection, yaw);
             }
 
             // MOVE
@@ -82,8 +85,11 @@ public class ProtocolClient extends GameConnectionClient
                 int avatarSelection = 0;
                 if (tokens.length > 5)
                     avatarSelection = Integer.parseInt(tokens[5]);
+                float yaw = 0.0f;
+                if (tokens.length > 6)
+                    yaw = Float.parseFloat(tokens[6]);
 
-                ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection);
+                ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection, yaw);
             }
 
             // BYE
@@ -117,7 +123,8 @@ public class ProtocolClient extends GameConnectionClient
                     "," + pos.x() +
                     "," + pos.y() +
                     "," + pos.z() +
-                    "," + game.getAvatarSelection();
+                    "," + game.getAvatarSelection() +
+                    "," + game.getPlayerYaw();
 
             sendPacket(msg);
         }
@@ -135,7 +142,8 @@ public class ProtocolClient extends GameConnectionClient
                     "," + pos.x() +
                     "," + pos.y() +
                     "," + pos.z() +
-                    "," + game.getAvatarSelection();
+                    "," + game.getAvatarSelection() +
+                    "," + game.getPlayerYaw();
 
             sendPacket(msg);
         }

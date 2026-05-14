@@ -18,7 +18,7 @@ public class GhostManager
         game = g;
     }
 
-    public void createGhost(UUID id, Vector3f pos, int avatarSelection)
+    public void createGhost(UUID id, Vector3f pos, int avatarSelection, float yaw)
     {
         GhostAvatar existingGhost = findAvatar(id);
         if (existingGhost != null)
@@ -26,6 +26,7 @@ public class GhostManager
             System.out.println("Ghost already exists: " + id);
             existingGhost.setPosition(pos);
             existingGhost.setTextureImage(game.getRobotTexture(avatarSelection));
+            existingGhost.setLocalRotation(new Matrix4f().rotationY(yaw));
             return;
         }
 
@@ -37,9 +38,16 @@ public class GhostManager
         Matrix4f scale = new Matrix4f().scaling(game.getPlayerScale());
         ghost.setLocalScale(scale);
 
+        ghost.setLocalRotation(new Matrix4f().rotationY(yaw));
+
         ghostAvs.add(ghost);
 
         System.out.println("Ghost created: " + id + " avatar=" + avatarSelection);
+    }
+
+    public void createGhost(UUID id, Vector3f pos, int avatarSelection)
+    {
+        createGhost(id, pos, avatarSelection, 0.0f);
     }
 
     public void createGhost(UUID id, Vector3f pos)
@@ -72,19 +80,25 @@ public class GhostManager
         return null;
     }
 
-    public void updateGhostAvatar(UUID id, Vector3f pos, int avatarSelection)
+    public void updateGhostAvatar(UUID id, Vector3f pos, int avatarSelection, float yaw)
     {
         GhostAvatar g = findAvatar(id);
         if (g != null)
         {
             g.setPosition(pos);
             g.setTextureImage(game.getRobotTexture(avatarSelection));
+            g.setLocalRotation(new Matrix4f().rotationY(yaw + (float)java.lang.Math.toRadians(270.0f)));
         }
         else
         {
             System.out.println("Move arrived before create for ghost" + id + "; creating ghost from move packet.");
-            createGhost(id, pos, avatarSelection);
+            createGhost(id, pos, avatarSelection, yaw);
         }
+    }
+
+    public void updateGhostAvatar(UUID id, Vector3f pos, int avatarSelection)
+    {
+        updateGhostAvatar(id, pos, avatarSelection, 0.0f);
     }
 
     public void updateGhostAvatar(UUID id, Vector3f pos)

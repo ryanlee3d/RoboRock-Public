@@ -17,11 +17,13 @@ public class GameServerUDP extends GameConnectionServer<UUID>
     // can be sent ghosts for players who were already in the session.
     private Map<UUID, Vector3f> clientPositions;
     private Map<UUID, Integer> clientAvatarSelections;
+    private Map<UUID, Float> clientYaws;
     public GameServerUDP(int localPort) throws IOException
     {
         super(localPort, ProtocolType.UDP);
         clientPositions = new java.util.concurrent.ConcurrentHashMap<>();
         clientAvatarSelections = new java.util.concurrent.ConcurrentHashMap<>();
+        clientYaws = new java.util.concurrent.ConcurrentHashMap<>();
         System.out.println("UDP server started on port " + localPort);
     }
 
@@ -66,9 +68,14 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 if (msgTokens.length > 5)
                     avatarSelection = Integer.parseInt(msgTokens[5]);
 
+                float yaw = 0.0f;
+                if (msgTokens.length > 6)
+                    yaw = Float.parseFloat(msgTokens[6]);
+
                 storeClientPosition(clientID, pos);
                 clientAvatarSelections.put(clientID, avatarSelection);
-                sendCreateMessages(clientID, pos, avatarSelection);
+                clientYaws.put(clientID, yaw);
+                sendCreateMessages(clientID, pos, avatarSelection, yaw);
             }
 
             // MOVE
@@ -77,14 +84,19 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 UUID clientID = UUID.fromString(msgTokens[1]);
                 String[] pos = { msgTokens[2], msgTokens[3], msgTokens[4] };
                 int avatarSelection = clientAvatarSelections.getOrDefault(clientID, 0);
+                float yaw = clientYaws.getOrDefault(clientID, 0.0f);
 
                 if (msgTokens.length > 5)
                     avatarSelection = Integer.parseInt(msgTokens[5]);
 
+                if (msgTokens.length > 6)
+                    yaw = Float.parseFloat(msgTokens[6]);
+
                 storeClientPosition(clientID, pos);
                 clientAvatarSelections.put(clientID, avatarSelection);
-                sendMoveMessages(clientID, pos, avatarSelection);
+                clientYaws.put(clientID, yaw);
 
+                sendMoveMessages(clientID, pos, avatarSelection, yaw);
             }
 
             // BYE
@@ -94,6 +106,7 @@ public class GameServerUDP extends GameConnectionServer<UUID>
 
                 clientPositions.remove(clientID);
                 clientAvatarSelections.remove(clientID);
+                clientYaws.remove(clientID);
                 sendByeMessages(clientID);
                 removeClient(clientID);
 
@@ -124,15 +137,16 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         }
     }
 
-    public void sendCreateMessages(UUID clientID, String[] position, int avatarSelection)
+    public void sendCreateMessages(UUID clientID, String[] position, int avatarSelection, float yaw)
     {
         try
         {
-            String message = "create," + clientID +
-                    "," + position[0] +
-                    "," + position[1] +
-                    "," + position[2] +
-                    "," + avatarSelection;
+        String message = "create," + clientID +
+                "," + position[0] +
+                "," + position[1] +
+                "," + position[2] +
+                "," + avatarSelection +
+                "," + yaw;
 
             forwardPacketToAll(message, clientID);
         }
@@ -156,12 +170,14 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                 // "GhostDetails" is used to handle ghosts that
                 // existed before this client joined.
                 int avatarSelection = clientAvatarSelections.getOrDefault(remoteID, 0);
+                float yaw = clientYaws.getOrDefault(remoteID, 0.0f);
 
                 String message = "ghostDetails," + remoteID +
                         "," + pos.x() +
                         "," + pos.y() +
                         "," + pos.z() +
-                        "," + avatarSelection;
+                        "," + avatarSelection +
+                        "," + yaw;
                 sendPacket(message, clientID);
             }
             catch (IOException e)
@@ -171,7 +187,7 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         }
     }
 
-    public void sendMoveMessages(UUID clientID, String[] position, int avatarSelection)
+    public void sendMoveMessages(UUID clientID, String[] position, int avatarSelection, float yaw)
     {
         try
         {
@@ -179,7 +195,8 @@ public class GameServerUDP extends GameConnectionServer<UUID>
                     "," + position[0] +
                     "," + position[1] +
                     "," + position[2] +
-                    "," + avatarSelection;
+                    "," + avatarSelection +
+                    "," + yaw;
 
             forwardPacketToAll(message, clientID);
         }

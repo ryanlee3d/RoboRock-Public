@@ -170,6 +170,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
     private boolean isClientConnected = false;
+    private float networkUpdateTimer = 0.0f;
+    private static final float NETWORK_UPDATE_INTERVAL = 0.05f;
 
     // skyboxes
     private int spaceSkyBox, islandSkyBox, lushSkyBox, plainsSkyBox;
@@ -2555,6 +2557,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             float yaw = (float)java.lang.Math.atan2(flatX, flatZ);
             player.setLocalRotation(new Matrix4f().rotationY(yaw));
         }
+        networkUpdateTimer += dt;
+
+        if (networkUpdateTimer >= NETWORK_UPDATE_INTERVAL)
+        {
+            networkUpdateTimer = 0.0f;
+
+            if (protClient != null && player != null)
+                protClient.sendMoveMessage(player.getWorldLocation());
+        }
 
 	Vector3f playerpos = player.getWorldLocation();
 
@@ -3606,6 +3617,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return playerTx;
 
         return robotTextures[selection];
+    }
+    public float getPlayerYaw()
+    {
+        if (cam == null)
+            return 0.0f;
+
+        Vector3f camN = cam.getN();
+
+        float flatX = camN.x;
+        float flatZ = camN.z;
+
+        if (java.lang.Math.abs(flatX) < 0.0001f && java.lang.Math.abs(flatZ) < 0.0001f)
+            return 0.0f;
+
+        return (float)java.lang.Math.atan2(flatX, flatZ);
     }
 
     //-------------------------------
