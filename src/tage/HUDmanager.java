@@ -28,12 +28,13 @@ public class HUDmanager
 	private GLUT glut = new GLUT();
 	private Engine engine;
 
-	private String HUD1string, HUD2string, HUD3string;
-	private float[] HUD1color, HUD2color, HUD3color;
+	private String HUD1string, HUD2string, HUD3string, HUD4string;
+	private float[] HUD1color, HUD2color, HUD3color, HUD4color;
 	private int HUD1font = GLUT.BITMAP_TIMES_ROMAN_24;
 	private int HUD2font = GLUT.BITMAP_TIMES_ROMAN_24;
 	private int HUD3font = GLUT.BITMAP_TIMES_ROMAN_24;
-	private int HUD1x, HUD1y, HUD2x, HUD2y, HUD3x, HUD3y;
+	private int HUD4font = GLUT.BITMAP_TIMES_ROMAN_24;
+	private int HUD1x, HUD1y, HUD2x, HUD2y, HUD3x, HUD3y, HUD4x, HUD4y;
 
 	// The constructor is called by the engine, and should not be called by the game application.
 	// It initializes the two HUDs to empty strings.
@@ -43,9 +44,11 @@ public class HUDmanager
 		HUD1string = "";
 		HUD2string = "";
 		HUD3string = "";
+		HUD4string = "";
 		HUD1color = new float[3];
 		HUD2color = new float[3];
 		HUD3color = new float[3];
+		HUD4color = new float[3];
 	}
 	
 	protected void setGLcanvas(GLCanvas g) { myCanvas = g; }
@@ -67,6 +70,10 @@ public class HUDmanager
 		gl4bc.glColor3f(HUD3color[0], HUD3color[1], HUD3color[2]);
 		gl4bc.glWindowPos2d(HUD3x, HUD3y);
 		glut.glutBitmapString(HUD3font, HUD3string);
+
+		gl4bc.glColor3f(HUD4color[0], HUD4color[1], HUD4color[2]);
+		gl4bc.glWindowPos2d(HUD4x, HUD4y);
+		glut.glutBitmapString(HUD4font, HUD4string);
 	}
 
 	/** sets HUD #1 to the specified text string, color, and location */
@@ -93,6 +100,13 @@ public class HUDmanager
 		HUD3x = x; HUD3y = y;
 	}
 
+	public void setHUD4(String string, Vector3f color, int x, int y)
+	{
+		HUD4string = string;
+		HUD4color[0]=color.x(); HUD4color[1]=color.y(); HUD4color[2]=color.z();
+		HUD4x = x; HUD4y = y;
+	}
+
 	/** sets HUD #1 font - available fonts are listed above. */
 	public void setHUD1font(int font) { HUD1font = font; }
 
@@ -101,4 +115,6 @@ public class HUDmanager
 	
 	/** sets HUD #3 font - available fonts are listed above. */
 	public void setHUD3font(int font) { HUD3font = font; }
+
+	public void setHUD4font(int font) { HUD4font = font; }
 }

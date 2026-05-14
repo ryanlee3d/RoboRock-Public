@@ -3,6 +3,7 @@ package bullet.states;
 public enum GameState
 {
     MENU,
+    ROBOT_SELECT,
     PLAYING,
     BETWEEN_WAVES,
     SHOP,

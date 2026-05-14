@@ -1,6 +1,7 @@
 package bullet.managers;
 
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import tage.GameObject;
@@ -24,8 +25,11 @@ public class UfoWaveManager
     private static final Vector3f LARGE_UFO_DROP_POSITION = new Vector3f(69.30f, 4.94f, -64.08f);
 
     private final Consumer<Vector3f> apeSpawner;
+    private final Supplier<Vector3f> playerPositionSupplier;
 
     private GameObject[] ufos = new GameObject[UFO_DROP_POSITIONS.length];
+    private boolean[] usedUfoDrops = new boolean[UFO_DROP_POSITIONS.length];
+
     private GameObject largeUfo;
     private GameObject activeUfo = null;
     private Vector3f activeUfoStart = new Vector3f();
@@ -36,10 +40,15 @@ public class UfoWaveManager
     private boolean active = false;
     private boolean waveDropFinished = false;
     private int currentWave = 0;
+    private boolean networkVisualOnly = false;
+    private Vector3f lastWaveTarget = new Vector3f();
+    private int lastWaveApeCount = 0;
+    private int lastWaveUfoIndex = -1;
 
-    public UfoWaveManager(Consumer<Vector3f> apeSpawner)
+    public UfoWaveManager(Consumer<Vector3f> apeSpawner, Supplier<Vector3f> playerPositionSupplier)
     {
         this.apeSpawner = apeSpawner;
+        this.playerPositionSupplier = playerPositionSupplier;
     }
 
     public void buildObjects(ObjShape ufoShape, TextureImage ufoTexture)
@@ -70,16 +79,62 @@ public class UfoWaveManager
 
     public void startNextWave()
     {
-        int maxWaves = UFO_DROP_POSITIONS.length;
-        int dropIndex = currentWave % maxWaves;
-        int apeCount = 5 + (currentWave * 2); // Scale difficulty with wave number
+        if (active)
+            return;
 
-        if ((currentWave + 1) % 5 == 0) // Boss wave every 5th wave
-            spawnWave(LARGE_UFO_DROP_POSITION, apeCount + 5, true);
-        else
-            spawnWave(UFO_DROP_POSITIONS[dropIndex], apeCount, false);
+        if (currentWave < UFO_DROP_POSITIONS.length)
+        {
+            int nextIndex = getClosestUnusedUfoIndex();
+
+            if (nextIndex < 0)
+                return;
+
+            usedUfoDrops[nextIndex] = true;
+            spawnWave(UFO_DROP_POSITIONS[nextIndex], 5, nextIndex);
+        }
+        else if (currentWave == UFO_DROP_POSITIONS.length)
+        {
+            spawnWave(LARGE_UFO_DROP_POSITION, 10, -1);
+        }
 
         currentWave++;
+    }
+
+    public boolean isFinalWaveComplete()
+    {
+        return currentWave > UFO_DROP_POSITIONS.length && !active;
+    }
+
+    public Vector3f getLargeUfoPosition()
+    {
+        if (largeUfo == null)
+            return new Vector3f(LARGE_UFO_DROP_POSITION.x, LARGE_UFO_DROP_POSITION.y + 18.0f, LARGE_UFO_DROP_POSITION.z);
+
+        return largeUfo.getWorldLocation();
+    }
+
+    public void startNetworkWave(Vector3f pos, int apeCount, int ufoIndex)
+    {
+        if (active)
+            return;
+
+        networkVisualOnly = true;
+        spawnWave(pos, apeCount, ufoIndex);
+    }
+
+    public Vector3f getLastWaveTarget()
+    {
+        return new Vector3f(lastWaveTarget);
+    }
+
+    public int getLastWaveApeCount()
+    {
+        return lastWaveApeCount;
+    }
+
+    public int getLastWaveUfoIndex()
+    {
+        return lastWaveUfoIndex;
     }
 
     public void update(float dt)
@@ -103,23 +158,88 @@ public class UfoWaveManager
 
         if (t >= 1.0f)
         {
-            dropApes(activeUfoTarget, activeUfoDropCount);
+            if (!networkVisualOnly)
+                dropApes(activeUfoTarget, activeUfoDropCount);
+
             waveDropFinished = true;
             active = false;
-            activeUfo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
+            networkVisualOnly = false;
         }
     }
 
-    private void spawnWave(Vector3f pos, int apeCount, boolean isLarge)
+    private int getClosestUnusedUfoIndex()
+    {
+        Vector3f playerPos = null;
+
+        if (playerPositionSupplier != null)
+            playerPos = playerPositionSupplier.get();
+
+        if (playerPos == null)
+            playerPos = new Vector3f(0.0f, 0.0f, 0.0f);
+
+        int bestIndex = -1;
+        float bestDistSq = Float.MAX_VALUE;
+
+        for (int i = 0; i < UFO_DROP_POSITIONS.length; i++)
+        {
+            if (usedUfoDrops[i])
+                continue;
+
+            Vector3f drop = UFO_DROP_POSITIONS[i];
+
+            float dx = drop.x - playerPos.x;
+            float dz = drop.z - playerPos.z;
+            float distSq = dx * dx + dz * dz;
+
+            if (distSq < bestDistSq)
+            {
+                bestDistSq = distSq;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private void spawnWave(Vector3f pos, int apeCount, int ufoIndex)
     {
         active = true;
         waveDropFinished = false;
         activeUfoTarget.set(pos);
         activeUfoTravelTime = 0.0f;
         activeUfoDropCount = apeCount;
+        lastWaveTarget.set(pos);
+        lastWaveApeCount = apeCount;
+        lastWaveUfoIndex = ufoIndex;
 
-        activeUfo = isLarge ? largeUfo : ufos[currentWave % ufos.length];
-        activeUfo.setLocalScale(new Matrix4f().scaling(isLarge ? 0.25f : 0.05f));
+        if (apeCount == 10)
+        {
+            activeUfo = largeUfo;
+
+            if (activeUfo != null)
+                activeUfo.setLocalScale(new Matrix4f().scaling(0.25f));
+        }
+        else
+        {
+            if (ufoIndex < 0 || ufoIndex >= ufos.length)
+            {
+                active = false;
+                activeUfo = null;
+                return;
+            }
+
+            activeUfo = ufos[ufoIndex];
+
+            if (activeUfo != null)
+                activeUfo.setLocalScale(new Matrix4f().scaling(0.05f));
+        }
+
+        if (activeUfo == null)
+        {
+            active = false;
+            return;
+        }
+
         activeUfoStart.set(getStartPosition(pos));
         activeUfo.setLocalTranslation(new Matrix4f().translation(activeUfoStart));
     }
@@ -140,5 +260,58 @@ public class UfoWaveManager
 
             apeSpawner.accept(new Vector3f(dropPos.x + offsetX, dropPos.y, dropPos.z + offsetZ));
         }
+    }
+
+    public void hideAllUfos()
+    {
+        active = false;
+        activeUfo = null;
+        waveDropFinished = false;
+
+        if (largeUfo != null)
+        {
+            largeUfo.setLocalScale(new Matrix4f().scaling(0.0001f));
+            largeUfo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
+        }
+
+        if (ufos != null)
+        {
+            for (GameObject ufo : ufos)
+            {
+                if (ufo != null)
+                {
+                    ufo.setLocalScale(new Matrix4f().scaling(0.0001f));
+                    ufo.setLocalTranslation(new Matrix4f().translation(9999.0f, 9999.0f, 9999.0f));
+                }
+            }
+        }
+    }
+
+    public void resetWaves()
+    {
+        active = false;
+        activeUfo = null;
+        waveDropFinished = false;
+        activeUfoTravelTime = 0.0f;
+        activeUfoDropCount = 0;
+        currentWave = 0;
+
+        for (int i = 0; i < usedUfoDrops.length; i++)
+            usedUfoDrops[i] = false;
+    }
+
+    // DEBUG METHOD
+    public void debugPlaceLargeUfo()
+    {
+        if (largeUfo == null) return;
+
+        Vector3f pos = new Vector3f(
+            LARGE_UFO_DROP_POSITION.x,
+            LARGE_UFO_DROP_POSITION.y + 18.0f,
+            LARGE_UFO_DROP_POSITION.z
+        );
+
+        largeUfo.setLocalScale(new Matrix4f().scaling(0.25f));
+        largeUfo.setLocalTranslation(new Matrix4f().translation(pos));
     }
 }

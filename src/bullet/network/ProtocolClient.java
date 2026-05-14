@@ -1,4 +1,6 @@
 package bullet.network;
+import bullet.MyGame;
+import bullet.managers.GhostManager;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -8,8 +10,6 @@ import org.joml.Vector3f;
 
 import tage.networking.client.GameConnectionClient;
 import tage.networking.IGameConnection.ProtocolType;
-import bullet.MyGame;
-import bullet.managers.GhostManager;
 
 public class ProtocolClient extends GameConnectionClient
 {
@@ -50,11 +50,18 @@ public class ProtocolClient extends GameConnectionClient
                 }
             }
 
+            // HOST ASSIGNMENT
+            if (command.equals("host"))
+            {
+                boolean isHost = Boolean.parseBoolean(tokens[1]);
+                game.setIsHostClient(isHost);
+                System.out.println("Host client status: " + isHost);
+            }
+
             // CREATE or DETAILS
-            if (command.equals("create") || command.equals("ghostDetails"))
+            if (command.equals("create") || command.equals("ghostDetails") || command.equals("GhostDetails"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
-                // Ignore our own replicated packets so we do not spawn a ghost for self.
                 if (ghostID.equals(id)) return;
 
                 Vector3f pos = new Vector3f(
@@ -63,14 +70,23 @@ public class ProtocolClient extends GameConnectionClient
                         Float.parseFloat(tokens[4])
                 );
 
-                ghostManager.createGhost(ghostID, pos);
+                int avatarSelection = 0;
+                if (tokens.length > 5)
+                    avatarSelection = Integer.parseInt(tokens[5]);
+                float yaw = 0.0f;
+                if (tokens.length > 6)
+                    yaw = Float.parseFloat(tokens[6]);
+                int weaponIndex = 0;
+                if (tokens.length > 7)
+                    weaponIndex = Integer.parseInt(tokens[7]);
+
+                ghostManager.createGhost(ghostID, pos, avatarSelection, yaw, weaponIndex);
             }
 
             // MOVE
             if (command.equals("move"))
             {
                 UUID ghostID = UUID.fromString(tokens[1]);
-                // Ignore our own replicated packets so local movement remains authoritative.
                 if (ghostID.equals(id)) return;
 
                 Vector3f pos = new Vector3f(
@@ -79,7 +95,178 @@ public class ProtocolClient extends GameConnectionClient
                         Float.parseFloat(tokens[4])
                 );
 
-                ghostManager.updateGhostAvatar(ghostID, pos);
+                int avatarSelection = 0;
+                if (tokens.length > 5)
+                    avatarSelection = Integer.parseInt(tokens[5]);
+                float yaw = 0.0f;
+                if (tokens.length > 6)
+                    yaw = Float.parseFloat(tokens[6]);
+                int weaponIndex = 0;
+                if (tokens.length > 7)
+                    weaponIndex = Integer.parseInt(tokens[7]);
+
+                ghostManager.updateGhostAvatar(ghostID, pos, avatarSelection, yaw, weaponIndex);
+            }
+
+            // ENEMY UPDATE
+            if (command.equals("enemyUpdate"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                int enemyID = Integer.parseInt(tokens[2]);
+                String enemyType = tokens[3];
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[4]),
+                        Float.parseFloat(tokens[5]),
+                        Float.parseFloat(tokens[6])
+                );
+
+                float yaw = Float.parseFloat(tokens[7]);
+                int health = Integer.parseInt(tokens[8]);
+                boolean dead = Boolean.parseBoolean(tokens[9]);
+
+                game.receiveNetworkEnemyUpdate(enemyID, enemyType, pos, yaw, health, dead);
+            }
+
+            // ENEMY REMOVE
+            if (command.equals("enemyRemove"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                int enemyID = Integer.parseInt(tokens[2]);
+                String enemyType = tokens[3];
+
+                game.receiveNetworkEnemyRemove(enemyID, enemyType);
+            }
+
+            // ENEMY BULLET
+            if (command.equals("enemyBullet"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                Vector3f dir = new Vector3f(
+                        Float.parseFloat(tokens[5]),
+                        Float.parseFloat(tokens[6]),
+                        Float.parseFloat(tokens[7])
+                );
+
+                boolean isPlasma = Boolean.parseBoolean(tokens[8]);
+                game.receiveNetworkEnemyBullet(pos, dir, isPlasma);
+            }
+
+            // PLAYER BULLET
+            if (command.equals("playerBullet"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                Vector3f dir = new Vector3f(
+                        Float.parseFloat(tokens[5]),
+                        Float.parseFloat(tokens[6]),
+                        Float.parseFloat(tokens[7])
+                );
+
+                boolean isPlasma = Boolean.parseBoolean(tokens[8]);
+                game.receiveNetworkPlayerBullet(senderID, pos, dir, isPlasma);
+            }
+
+            // CREDIT AWARD
+            if (command.equals("creditAward"))
+            {
+                UUID targetID = UUID.fromString(tokens[2]);
+                int amount = Integer.parseInt(tokens[3]);
+
+                if (targetID.equals(id))
+                    game.receiveCreditAward(amount);
+            }
+
+            // UFO WAVE START
+            if (command.equals("ufoWaveStart"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                int apeCount = Integer.parseInt(tokens[5]);
+                int ufoIndex = Integer.parseInt(tokens[6]);
+
+                game.receiveNetworkUfoWaveStart(pos, apeCount, ufoIndex);
+            }
+
+            // TRACTOR BEAM START
+            if (command.equals("tractorBeamStart"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f ufoPos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                game.receiveNetworkTractorBeamStart(ufoPos);
+            }
+
+            // GRAPPLE DROP
+            if (command.equals("grappleDrop"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                Vector3f pos = new Vector3f(
+                        Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3]),
+                        Float.parseFloat(tokens[4])
+                );
+
+                game.receiveNetworkGrappleDrop(pos);
+            }
+
+            // GRAPPLE TAKEN
+            if (command.equals("grappleTaken"))
+            {
+                UUID senderID = UUID.fromString(tokens[1]);
+
+                if (senderID.equals(id))
+                    return;
+
+                game.receiveNetworkGrappleTaken();
             }
 
             // BYE
@@ -112,7 +299,10 @@ public class ProtocolClient extends GameConnectionClient
             String msg = "create," + id +
                     "," + pos.x() +
                     "," + pos.y() +
-                    "," + pos.z();
+                    "," + pos.z() +
+                    "," + game.getAvatarSelection() +
+                    "," + game.getPlayerYaw() +
+                    "," + game.getCurrentWeaponIndex();
 
             sendPacket(msg);
         }
@@ -129,8 +319,173 @@ public class ProtocolClient extends GameConnectionClient
             String msg = "move," + id +
                     "," + pos.x() +
                     "," + pos.y() +
+                    "," + pos.z() +
+                    "," + game.getAvatarSelection() +
+                    "," + game.getPlayerYaw() +
+                    "," + game.getCurrentWeaponIndex();
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendEnemyUpdate(int enemyID, String enemyType, Vector3f pos, float yaw, int health, boolean dead)
+    {
+        try
+        {
+            String msg = "enemyUpdate," + id +
+                    "," + enemyID +
+                    "," + enemyType +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + yaw +
+                    "," + health +
+                    "," + dead;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendEnemyRemove(int enemyID, String enemyType)
+    {
+        try
+        {
+            String msg = "enemyRemove," + id +
+                    "," + enemyID +
+                    "," + enemyType;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendEnemyBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        try
+        {
+            String msg = "enemyBullet," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + dir.x() +
+                    "," + dir.y() +
+                    "," + dir.z() +
+                    "," + isPlasma;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendPlayerBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        try
+        {
+            String msg = "playerBullet," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + dir.x() +
+                    "," + dir.y() +
+                    "," + dir.z() +
+                    "," + isPlasma;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendCreditAward(UUID targetID, int amount)
+    {
+        try
+        {
+            String msg = "creditAward," + id +
+                    "," + targetID +
+                    "," + amount;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendUfoWaveStart(Vector3f pos, int apeCount, int ufoIndex)
+    {
+        try
+        {
+            String msg = "ufoWaveStart," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
+                    "," + pos.z() +
+                    "," + apeCount +
+                    "," + ufoIndex;
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendTractorBeamStart(Vector3f ufoPos)
+    {
+        try
+        {
+            String msg = "tractorBeamStart," + id +
+                    "," + ufoPos.x() +
+                    "," + ufoPos.y() +
+                    "," + ufoPos.z();
+
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendGrappleDrop(Vector3f pos)
+    {
+        try
+        {
+            String msg = "grappleDrop," + id +
+                    "," + pos.x() +
+                    "," + pos.y() +
                     "," + pos.z();
 
+            sendPacket(msg);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    public void sendGrappleTaken()
+    {
+        try
+        {
+            String msg = "grappleTaken," + id;
             sendPacket(msg);
         }
         catch (IOException e)

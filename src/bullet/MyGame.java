@@ -7,27 +7,16 @@ import tage.input.action.*;
 
 import java.awt.*;
 import java.awt.event.*;
-import java.util.Random;
 import org.joml.*;
 import org.joml.Math;
+import java.util.Random;
 
 // networking imports
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import tage.networking.IGameConnection.ProtocolType;
-
-import bullet.actions.*;
-import bullet.audio.GameAudio;
-import bullet.camera.OverheadCameraController;
-import bullet.combat.WeaponInventory;
-import bullet.combat.WeaponType;
-import bullet.managers.*;
-import bullet.network.*;
-import bullet.rendering.SkyBoxes;
-import bullet.states.GameState;
-import bullet.states.ShopState;
-import bullet.ui.MainMenu;
+import java.util.UUID;
 
 // physics imports
 import tage.physics.PhysicsEngine;
@@ -36,7 +25,18 @@ import tage.physics.PhysicsObject;
 // behavior tree imports
 import tage.ai.behaviortrees.*;
 
-public class MyGame extends VariableFrameRateGame implements MouseMotionListener, MouseListener
+import bullet.actions.*;
+import bullet.audio.*;
+import bullet.avatars.*;
+import bullet.camera.*;
+import bullet.combat.*;
+import bullet.managers.*;
+import bullet.network.*;
+import bullet.rendering.*;
+import bullet.states.*;
+import bullet.ui.*;
+
+public class MyGame extends VariableFrameRateGame implements MouseMotionListener, MouseListener, MouseWheelListener
 {
     private static Engine engine;
 
@@ -46,11 +46,18 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int menuSelection = 0;
     private final MainMenu menu = new MainMenu();
 
+    private int avatarSelection = 0;
+    private final String[] avatarNames = {
+        "Blue",
+        "White",
+        "Dark",
+        "Grey"
+    };
+
     private boolean physicsDebug = true;
     private final GameAudio gameAudio = new GameAudio();
     private final PickupManager pickupManager = new PickupManager(this);
     private final UfoWaveManager ufoWaveManager;
-    private final Random random = new Random();
 
     private InputManager im;
     private CameraOrbit3D orbitCam;
@@ -65,18 +72,29 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private float sensitvity = 0.25f;
 
+    // gamepad
+    private static final float GAMEPAD_DEADZONE = 0.25f;
+    private static final float GAMEPAD_LOOK_SPEED = 120.0f;
+    private static final long GAMEPAD_MENU_REPEAT_MS = 180L;
+
+    private float gamepadLookX = 0.0f;
+    private float gamepadLookY = 0.0f;
+    private boolean gamepadFireHeld = false;
+    private boolean gamepadFireSeenThisFrame = false;
+    private long lastGamepadMenuInputTime = 0L;
+
     private double lastFrameTime, currFrameTime, elapsTime;
     private IAction restartGame;
 
     // game objects
-    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding;
+    private GameObject player, skinny, ape, knife, pistol, plasmaRifle, rifle, shotGun, apePlasmaRifle, terr, centerBuilding, brain, playerGrappleLine;
 
     // instances of game objects for repeat use
     private GameObject[] smallBuildings = new GameObject[8];
     private GameObject[] smallBuildings2 = new GameObject[8];
 
     // shapes for animated objects
-    private AnimatedShape playerS, skinnyS, apeS;
+    private AnimatedShape playerS, skinnyS, apeS, brainS;
 
     // player animation values
     private boolean isMoving = false;
@@ -85,6 +103,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     // player stats
     private int pHealth = 100;
+    private boolean playerDeathScreenActive = false;
 
     private final int pHealthMin = 0;
     private final int pHealthMax = 150;
@@ -93,14 +112,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final WeaponInventory weaponInventory = new WeaponInventory();
 
     // shapes and textures for game objects
-    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS;
+    private ObjShape ammoS, terrS, healthS, plasmaRifleS, rifleS, shotGunS, knifeS, pistolS, smallBuildingS, smallBuilding2S, centerBuildingS, ufoS, grappleGunS, skinnyGrappleLineS;
 
     private TextureImage playerTx, terrTxMap0, terrTxMap1, ammoTx, healthTx, plasmaRifleTx, rifleTx, shotGunTx, knifeTx, pistolTx,
-        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx;
+        heightMap0, heightMap1, skinnyTx, apeTx, smallBuildingTx, smallBuilding2Tx, centerBuildingTx, ufoTx, brainTx, grappleGunTx;
+
+    private TextureImage[] robotTextures = new TextureImage[4];
+
+    //DEBUG
+    private GameObject debugSkinny;
+    private GameObject debugSkinnyPlasmaRifle;
+    private GameObject debugSkinnyGrappleGun;
 
     // object init locations and scale
-    // Y is resolved from the selected terrain height before the physics capsule is created.
-    private Vector3f playerStartPos = new Vector3f(-61.13f, 0.0f, 96.12f);
+    private Vector3f playerStartPos = new Vector3f(-61.13f, 14.08f, 96.12f);
     private float playerScale = 0.01f;
 
     // player / terrain tuning
@@ -119,20 +144,30 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private Vector3f weaponPos = new Vector3f(-0.2f, 1.4f, 0.65f);
     private float weaponScale = 0.5f;
     private float knifeWeaponScale = 6f;
-    private float weaponRotY = 0.0f;
+    private float weaponRotY = 0.0f;  
 
     // hidden scale for inactive weapons
     private final float hiddenWeaponScale = 0.0001f;
+
+    //grapple gun
+    private GameObject grapplePickup;
+    private boolean grapplePickupActive = false;
+    private boolean playerHasGrapple = false;
+    private boolean playerGrappling = false;
+    private float grappleTimer = 0.0f;
+    private final float grappleDuration = 0.75f;
+    private final float grappleSpeed = 80.0f;
+    private Vector3f grappleDir = new Vector3f();
 
     // lighting
     private Light mainLight;
 
     // physics
     private PhysicsEngine physicsEngine;
-    private PhysicsObject playerP, terrainP;
+    private PhysicsObject playerP, terrainP, terrainP0, terrainP1;
     private boolean physicsRunning = true;
-    private boolean terrainPhysicsRefreshPending = false;
 
+    // mouselook
     private Robot robot;
     private boolean mouseModeInitiated = false;
     private boolean isRecentering = false;
@@ -148,12 +183,43 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
     private boolean isClientConnected = false;
+    private boolean isHostClient = false;
+    private float networkUpdateTimer = 0.0f;
+    private static final float NETWORK_UPDATE_INTERVAL = 0.05f;
+    private NetworkEnemyManager networkEnemyManager;
+    private float enemyNetworkUpdateTimer = 0.0f;
+    private static final float ENEMY_NETWORK_UPDATE_INTERVAL = 0.10f;
+    
 
     // skyboxes
-    private int spaceSkyBox, fluffySkyBox;
+    private int spaceSkyBox, islandSkyBox, lushSkyBox, plainsSkyBox;
 
     // map selection
     private int mapSelection = 0;
+    private boolean pendingSkinnySpawn = false;
+    private boolean pendingCaseOneStart = false;
+    private boolean pendingDebugFinalUfoBeam = false;
+
+    //floating brain
+    private boolean brainFloating = false;
+
+    // objective HUD state
+    private boolean playerKnockedOffLevelTwo = false;
+    private boolean brainDefeated = false;
+
+    // brain boss AI
+    private boolean brainActive = false;
+    private float brainActionTimer = 3.0f;
+    private float brainCircleAngle = 0.0f;
+    private float brainCircleDir = 1.0f;
+    private int brainAttackType = 0;
+    private int brainShotsLeft = 0;
+    private float brainShotTimer = 0.0f;
+    private Vector3f brainRushTarget = new Vector3f();
+    private boolean brainRushing = false;
+    private int brainHealth = 5000;
+    private final int brainMaxHealth = 5000;
+    private static final int NETWORK_BRAIN_ID = -5000;
 
     // ghost rendering
     private AnimatedShape ghostS;
@@ -167,8 +233,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean isFiring = false;
 
+    // plasma rifle burst fire control
+    private int plasmaBurstShotsRemaining = 0;
+    private float plasmaBurstTimer = 0.0f;
+    private final float plasmaBurstDelay = 0.08f;
+
     // apes
     private java.util.ArrayList<GameObject> activeApes = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeApeNetworkIds = new java.util.ArrayList<>();
+    private int nextNetworkEnemyId = 1;
     private java.util.ArrayList<PhysicsObject> activeApePhysics = new java.util.ArrayList<>();
     private java.util.ArrayList<Integer> activeApeHealth = new java.util.ArrayList<>();
     private java.util.ArrayList<Boolean> activeApeDead = new java.util.ArrayList<>();
@@ -177,9 +250,57 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private java.util.ArrayList<Float> activeApeFireCooldowns = new java.util.ArrayList<>();
     private java.util.ArrayList<Float> activeApeStrafeDirs = new java.util.ArrayList<>();
     private java.util.ArrayList<BehaviorTree> activeApeTrees = new java.util.ArrayList<>();
+    private java.util.ArrayList<PhysicsObject> buildingPhysics = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeApeGuns = new java.util.ArrayList<>();
 
     private float apeThinkTimer = 0.0f;
     private final float apeThinkInterval = 0.25f;
+
+    // skinwalker
+    private java.util.ArrayList<GameObject> activeSkinnys = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeSkinnyNetworkIds = new java.util.ArrayList<>();
+    private java.util.ArrayList<PhysicsObject> activeSkinnyPhysics = new java.util.ArrayList<>();
+    private java.util.ArrayList<Integer> activeSkinnyHealth = new java.util.ArrayList<>();
+    private java.util.ArrayList<Boolean> activeSkinnyDead = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeSkinnyBounceTimers = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeSkinnyPlasma = new java.util.ArrayList<>();
+    private java.util.ArrayList<Float> activeSkinnyFireCooldowns = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeSkinnyGrapple = new java.util.ArrayList<>();
+    private java.util.ArrayList<GameObject> activeSkinnyGrappleLines = new java.util.ArrayList<>();
+    private int skinnyKillCount = 0;
+
+
+
+    // UFO tractor beam
+    private boolean tractorBeamActive = false;
+    private boolean playerInTractorBeam = false;
+    private Light tractorBeamLight;
+    // gameplay-only tractor beam: no physics collider, just X/Z distance + wave completion logic
+    private Vector3f tractorBeamCenter = new Vector3f(0.0f, 0.0f, 0.0f);
+
+    private final float tractorBeamRadius = 5.0f;
+    private final float tractorBeamHeight = 35.0f;
+    private final float tractorBeamLiftSpeed = 8.0f;
+    private float tractorBeamTopY = 35.0f;
+
+    // Level two
+    private boolean levelTwoArrivalEventPending = false;
+    private float levelTwoArrivalTimer = 0.0f;
+    private float levelTwoThrowControlTimer = 0.0f;
+
+    private final float levelTwoArrivalDelay = 1.0f;
+    private final float levelTwoThrowBackSpeed = 30.0f;
+    private final float levelTwoThrowUpSpeed = 6.0f;
+    private final float levelTwoThrowControlDuration = 1.0f;
+
+    private final Vector3f levelTwoThrowDir = new Vector3f(0.0f, 0.0f, 1.0f);
+    // Background music control
+    private boolean levelTwoMusicPending = false;
+    private float levelTwoMusicTimer = 0.0f;
+    private final float levelTwoMusicDelay = 2.0f; // 1 sec to roar, then 1 sec after roar
+    private boolean bossMusicStarted = false;
+
+
 
     private final float worldGravity = -9.8f;
     private final float shotgunSpread = 0.12f;
@@ -189,7 +310,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         super();
         gm = new GhostManager(this);
-        ufoWaveManager = new UfoWaveManager(this::spawnApe);
+        networkEnemyManager = new NetworkEnemyManager(this);
+        ufoWaveManager = new UfoWaveManager(this::spawnApe, this::getPlayerPosition);
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
         serverProtocol = protocol.toUpperCase().compareTo("TCP") == 0 ? ProtocolType.TCP : ProtocolType.UDP;
@@ -344,43 +466,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         obj.setLocalLocation(new Vector3f(pos.x, height + yOffset, pos.z));
     }
 
-    private Vector3f getPlayerTerrainStartLocation()
-    {
-        if (terr == null)
-            return new Vector3f(playerStartPos);
-
-        float terrainY = terr.getHeight(playerStartPos.x, playerStartPos.z);
-            // Add a slight drop buffer so the physics engine doesn't spawn the capsule inside the mesh
-            return new Vector3f(playerStartPos.x, terrainY + 2.0f, playerStartPos.z);
-    }
-
-    private Vector3f getPlayerPhysicsCenter(Vector3f playerVisualLocation)
-    {
-        return new Vector3f(
-            playerVisualLocation.x,
-            playerVisualLocation.y + playerVisualYOffset,
-            playerVisualLocation.z
-        );
-    }
-
-    private void placePlayerAtTerrainStart()
-    {
-        if (player == null) return;
-
-        Vector3f visualLoc = getPlayerTerrainStartLocation();
-        player.setLocalLocation(visualLoc);
-        prevPlayerPos.set(visualLoc);
-
-        if (playerP != null)
-        {
-            Quaternionf rot = new Quaternionf();
-            player.getWorldRotation().getNormalizedRotation(rot);
-            playerP.setTransform(getPlayerPhysicsCenter(visualLoc), rot);
-            playerP.setLinearVelocity(new float[] { 0f, 0f, 0f });
-            playerP.setAngularVelocity(new float[] { 0f, 0f, 0f });
-        }
-    }
-
     private void syncGameObjectToPhysics(GameObject go)
     {
         if (go == null || go.getPhysicsObject() == null) return;
@@ -401,6 +486,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         go.setLocalRotation(rotMat);
     }
 
+    private void addBuildingBoxCollider(GameObject building, float width, float height, float depth)
+    {
+        if (building == null || physicsEngine == null) return;
+
+        Vector3f loc = building.getWorldLocation();
+        Quaternionf rot = new Quaternionf();
+        building.getWorldRotation().getNormalizedRotation(rot);
+
+        PhysicsObject p = engine.getSceneGraph().addPhysicsBox(
+            0.0f,
+            new Vector3f(loc.x, loc.y + height / 2.0f, loc.z),
+            rot,
+            new float[] { width, height, depth }
+        );
+
+        p.setFriction(1.0f);
+        p.setBounciness(0.0f);
+        p.disableSleeping();
+
+        buildingPhysics.add(p);
+    }
+
     private void updateWeaponVisibility()
     {
         WeaponType currentWeapon = weaponInventory.getCurrentWeapon();
@@ -411,8 +518,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 knife.setLocalScale(new Matrix4f().scaling(knifeWeaponScale));
                 knife.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-                    .rotateY((float)Math.toRadians(-90.0f))
-                    .rotateZ((float)Math.toRadians(25.0f)));
+                    .rotateY((float)java.lang.Math.toRadians(-90.0f))
+                    .rotateZ((float)java.lang.Math.toRadians(25.0f)));
             }
             else knife.setLocalScale(new Matrix4f().scaling(hiddenWeaponScale));
         }
@@ -432,20 +539,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void updateStaticObjectsToTerrain()
     {
-        if (terr == null) return;
+        if (terr == null || mapSelection == 1) return;
 
         if (centerBuilding != null) snapObjectToTerrain(centerBuilding, 0.0f);
+
 
         for (int i = 0; i < smallBuildings.length; i++)
             if (smallBuildings[i] != null) snapObjectToTerrain(smallBuildings[i], 0.0f);
 
         for (int i = 0; i < smallBuildings2.length; i++)
             if (smallBuildings2[i] != null) snapObjectToTerrain(smallBuildings2[i], 0.0f);
-
-        if (skinny != null) snapObjectToTerrain(skinny, 0.0f);
-        if (ape != null) snapObjectToTerrain(ape, 0.0f);
-        if (shopState.getVendingMachine() != null)
-            snapObjectToTerrain(shopState.getVendingMachine(), ShopState.VENDING_TERRAIN_Y_OFFSET);
     }
 
     private void updatePlayerVisibilityForCameraMode()
@@ -469,6 +572,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         );
 
         GameObject newApe = new GameObject(GameObject.root(), apeS, apeTx);
+
         newApe.setLocalScale(new Matrix4f().scaling(0.01f));
         newApe.getRenderStates().setModelOrientationCorrection(
             new Matrix4f()
@@ -476,12 +580,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 .rotateZ((float)Math.toRadians(180.0f))
         );
 
+        if (apeS != null)
+            apeS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);        
+
         newApe.setLocalTranslation(new Matrix4f().translation(
             spawnPos.x, spawnPos.y, spawnPos.z));
 
         GameObject newApeGun = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
         newApeGun.setLocalTranslation(new Matrix4f().translation(-0.05f, 1.5f, 0.7f));
-        newApeGun.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(0.0f)));
+        newApeGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f)));
         newApeGun.setLocalScale(new Matrix4f().scaling(0.5f));
 
         newApeGun.setParent(newApe);
@@ -510,20 +617,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         newApe.setPhysicsObject(apeP);
 
         activeApes.add(newApe);
+        activeApeNetworkIds.add(nextNetworkEnemyId++);
+        activeApeGuns.add(newApeGun);
         activeApePhysics.add(apeP);
         activeApeHealth.add(100); 
         activeApeDead.add(false);
         activeApeDeathTimers.add(0.0f);
         activeApeThinkTimers.add(0.0f);
-        activeApeFireCooldowns.add(random.nextFloat() * 1.5f);
-        activeApeStrafeDirs.add(random.nextFloat() < 0.5f ? -1.0f : 1.0f);
+        activeApeFireCooldowns.add((float)(Math.random() * 1.5f));
+        activeApeStrafeDirs.add(Math.random() < 0.5 ? -1.0f : 1.0f);
         activeApeTrees.add(createApeBehaviorTree(newApe, apeP));
     }
 
     private void removeApe(int index)
     {
+        int networkID = activeApeNetworkIds.get(index);
+
+        if (protClient != null && isHostClient)
+            protClient.sendEnemyRemove(networkID, "APE");
+
         GameObject ape = activeApes.get(index);
         PhysicsObject apeP = activeApePhysics.get(index);
+        GameObject apeGun = activeApeGuns.get(index);
 
         if (ape != null)
             ape.setLocalScale(new Matrix4f().scaling(0.0001f));
@@ -531,7 +646,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (apeP != null)
             physicsEngine.removeObject(apeP.getUID());
 
+        if (apeGun != null)
+            apeGun.setLocalScale(new Matrix4f().scaling(0.0001f));
+
         activeApes.remove(index);
+        activeApeNetworkIds.remove(index);
+        activeApeGuns.remove(index);
         activeApePhysics.remove(index);
         activeApeHealth.remove(index);
         activeApeDead.remove(index);
@@ -553,98 +673,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (time <= 0.0f)
                 removeApe(i);
-        }
-    }
-
-    private void updateApeAI(float dt)
-    {
-        if (player == null) return;
-
-        Vector3f playerPos = player.getWorldLocation();
-
-        for (int i = 0; i < activeApes.size(); i++)
-        {
-            if (activeApeDead.get(i)) continue;
-
-            GameObject apeObj = activeApes.get(i);
-            PhysicsObject apePhys = activeApePhysics.get(i);
-
-            if (apeObj == null || apePhys == null) continue;
-
-            Vector3f apePos = apePhys.getLocation();
-            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
-            float dist = toPlayer.length();
-
-            if (dist < 0.001f) continue;
-            toPlayer.normalize();
-
-            // face player
-            float yaw = (float)Math.atan2(toPlayer.x, toPlayer.z);
-            apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
-
-            // circle player while staying in combat range
-            float preferredMin = 8.0f;
-            float preferredMax = 18.0f;
-            float moveSpeed = 3.0f;
-            float strafeDir = activeApeStrafeDirs.get(i);
-
-            Vector3f moveDir = new Vector3f();
-
-            // move toward player
-            if (dist > preferredMax)
-            {
-                moveDir.set(toPlayer.x, 0.0f, toPlayer.z);
-            }
-            // back away a bit
-            else if (dist < preferredMin)
-            {
-                moveDir.set(-toPlayer.x, 0.0f, -toPlayer.z);
-            }
-            // strafe around player
-            else
-            {
-                moveDir.set(-toPlayer.z * strafeDir, 0.0f, toPlayer.x * strafeDir);
-            }
-
-            if (moveDir.lengthSquared() > 0.0001f)
-            {
-                moveDir.normalize();
-                apePhys.setLinearVelocity(new float[]
-                {
-                    moveDir.x * moveSpeed,
-                    apePhys.getLinearVelocity()[1],
-                    moveDir.z * moveSpeed
-                });
-            }
-
-            // occasionally change strafe direction
-            float think = activeApeThinkTimers.get(i) + dt;
-            if (think >= 1.0f)
-            {
-                think = 0.0f;
-                if (random.nextFloat() < 0.25f)
-                {
-                    activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
-                }
-            }
-            activeApeThinkTimers.set(i, think);
-
-            // fire cooldown
-            float fireCd = activeApeFireCooldowns.get(i) - dt;
-            if (fireCd <= 0.0f && dist <= 25.0f)
-            {
-                Vector3f fireDir = new Vector3f(playerPos)
-                    .add(0.0f, 1.0f, 0.0f)
-                    .sub(apePos.x, apePos.y + 1.5f, apePos.z)
-                    .normalize();
-
-                Vector3f muzzlePos = new Vector3f(apePos.x, apePos.y + 1.5f, apePos.z)
-                    .add(new Vector3f(fireDir).mul(1.2f));
-
-                spawnEnemyBullet(muzzlePos, fireDir, true);
-                fireCd = 1.25f;   // ape fire rate
-            }
-            activeApeFireCooldowns.set(i, fireCd);
         }
     }
 
@@ -683,6 +711,60 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         return activeApes.indexOf(apeObj);
     }
 
+    private Vector3f getClosestPlayerOrGhostTarget(Vector3f from)
+    {
+        if (from == null)
+            return null;
+
+        Vector3f bestTarget = null;
+        float bestDistSq = Float.MAX_VALUE;
+
+        if (player != null && pHealth > 0 && !playerDeathScreenActive)
+        {
+            Vector3f playerPos = player.getWorldLocation();
+
+            float dx = playerPos.x - from.x;
+            float dy = playerPos.y - from.y;
+            float dz = playerPos.z - from.z;
+
+            bestDistSq = dx * dx + dy * dy + dz * dz;
+            bestTarget = new Vector3f(playerPos);
+        }
+
+        if (gm != null)
+        {
+            Vector3f ghostPos = gm.getClosestGhostPosition(from);
+
+            if (ghostPos != null)
+            {
+                float dx = ghostPos.x - from.x;
+                float dy = ghostPos.y - from.y;
+                float dz = ghostPos.z - from.z;
+
+                float ghostDistSq = dx * dx + dy * dy + dz * dz;
+
+                if (bestTarget == null || ghostDistSq < bestDistSq)
+                {
+                    bestDistSq = ghostDistSq;
+                    bestTarget = new Vector3f(ghostPos);
+                }
+            }
+        }
+
+        return bestTarget;
+    }
+
+    private boolean hasAnyLivingPlayerOrGhostTarget()
+    {
+        if (player != null && pHealth > 0 && !playerDeathScreenActive)
+            return true;
+
+        if (gm != null)
+            return gm.getClosestGhostPosition(new Vector3f(0.0f, 0.0f, 0.0f)) != null;
+
+        return false;
+    }
+
     private class PlayerAliveCondition extends BTCondition
     {
         public PlayerAliveCondition()
@@ -692,7 +774,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         protected boolean check()
         {
-            return player != null && pHealth > 0;
+            return hasAnyLivingPlayerOrGhostTarget();
         }
     }
 
@@ -709,19 +791,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         protected BTStatus update(float elapsedTime)
         {
-            if (player == null || apeObj == null || apePhys == null)
+            if (apeObj == null || apePhys == null)
                 return BTStatus.BH_FAILURE;
 
-            Vector3f playerPos = player.getWorldLocation();
             Vector3f apePos = apePhys.getLocation();
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(apePos);
 
-            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
-            if (toPlayer.length() < 0.001f)
+            if (targetPos == null)
                 return BTStatus.BH_FAILURE;
 
-            toPlayer.normalize();
+            Vector3f toTarget = new Vector3f(targetPos).sub(apePos);
 
-            float yaw = (float)Math.atan2(toPlayer.x, toPlayer.z);
+            if (toTarget.length() < 0.001f)
+                return BTStatus.BH_FAILURE;
+
+            toTarget.normalize();
+
+            float yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
             apeObj.setLocalRotation(new Matrix4f().rotationY(yaw));
 
             return BTStatus.BH_SUCCESS;
@@ -742,13 +828,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         protected BTStatus update(float elapsedTime)
         {
             int i = getApeIndex(apeObj);
-            if (i < 0 || player == null || apePhys == null)
+            if (i < 0 || apePhys == null)
                 return BTStatus.BH_FAILURE;
 
-            Vector3f playerPos = player.getWorldLocation();
             Vector3f apePos = apePhys.getLocation();
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(apePos);
 
-            Vector3f toPlayer = new Vector3f(playerPos).sub(apePos);
+            if (targetPos == null)
+                return BTStatus.BH_FAILURE;
+
+            Vector3f toPlayer = new Vector3f(targetPos).sub(apePos);
             float dist = toPlayer.length();
 
             if (dist < 0.001f)
@@ -815,7 +904,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 think = 0.0f;
 
-                if (random.nextFloat() < 0.25f)
+                if (Math.random() < 0.25)
                     activeApeStrafeDirs.set(i, -activeApeStrafeDirs.get(i));
             }
 
@@ -839,19 +928,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         protected BTStatus update(float elapsedTime)
         {
             int i = getApeIndex(apeObj);
-            if (i < 0 || player == null || apePhys == null)
-                return BTStatus.BH_FAILURE;
+        if (i < 0 || apePhys == null)
+            return BTStatus.BH_FAILURE;
 
-            Vector3f playerPos = player.getWorldLocation();
-            Vector3f apePos = apePhys.getLocation();
+        Vector3f apePos = apePhys.getLocation();
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(apePos);
 
-            float dist = new Vector3f(playerPos).sub(apePos).length();
+        if (targetPos == null)
+            return BTStatus.BH_FAILURE;
+
+        float dist = new Vector3f(targetPos).sub(apePos).length();
 
             float fireCd = activeApeFireCooldowns.get(i) - elapsedTime;
 
             if (fireCd <= 0.0f && dist <= 25.0f)
             {
-                Vector3f fireDir = new Vector3f(playerPos)
+                Vector3f fireDir = new Vector3f(targetPos)
                     .add(0.0f, 1.0f, 0.0f)
                     .sub(apePos.x, apePos.y + 1.5f, apePos.z)
                     .normalize();
@@ -861,7 +953,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 spawnEnemyBullet(muzzlePos, fireDir, true);
 
-                gameAudio.playApePlasma(muzzlePos);
+                if (protClient != null && isHostClient)
+                protClient.sendEnemyBullet(muzzlePos, fireDir, true);
+
+                gameAudio.playNpcPlasma(muzzlePos);
 
                 fireCd = 1.25f;
             }
@@ -872,11 +967,244 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
+    private void spawnSkinny(Vector3f pos)
+    {
+        float terrainY = terr.getHeight(pos.x, pos.z);
+
+        Vector3f spawnPos = new Vector3f(pos.x, terrainY + 2.0f, pos.z);
+
+        GameObject s = new GameObject(GameObject.root(), skinnyS, skinnyTx);
+        s.setLocalScale(new Matrix4f().scaling(0.8f));
+        s.setLocalTranslation(new Matrix4f().translation(spawnPos));
+        skinnyS.playAnimation("GRAPPLE", 0.3f, AnimatedShape.EndType.LOOP, 0);
+
+        // === RIGHT HAND PLASMA ===
+        GameObject plasma = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+        plasma.setParent(s);
+        plasma.propagateTranslation(true);
+        plasma.propagateRotation(true);
+        plasma.propagateScale(true);
+        plasma.applyParentRotationToPosition(true);
+
+        plasma.setLocalTranslation(
+            new Matrix4f().translation(-0.3f, 1.25f, 0.75f)
+        );
+        plasma.setLocalScale(new Matrix4f().scaling(weaponScale / 75.0f));
+        plasma.setLocalRotation(
+            new Matrix4f().rotationY(0.0f)
+        );
+
+        // === LEFT HAND GRAPPLE ===
+        GameObject grapple = new GameObject(GameObject.root(), grappleGunS, grappleGunTx);
+        grapple.setParent(s);
+        grapple.propagateTranslation(true);
+        grapple.propagateRotation(true);
+        grapple.propagateScale(true);
+        grapple.applyParentRotationToPosition(true);
+
+        grapple.setLocalTranslation(
+            new Matrix4f().translation(0.25f, 1.45f, 0.25f)
+        );
+        grapple.setLocalScale(new Matrix4f().scaling(0.03f));
+        grapple.setLocalRotation(
+            new Matrix4f().rotationX((float)Math.toRadians(45.0f))
+        );
+
+        /*
+        // Alien grapple lines were too visually messy, so this is disabled.
+        // The player grapple line still uses skinnyGrappleLineS separately.
+        GameObject grappleLine = new GameObject(GameObject.root(), skinnyGrappleLineS);
+        grappleLine.getRenderStates().setColor(new Vector3f(0.6f, 0.6f, 0.6f));
+        grappleLine.setParent(s);
+        grappleLine.propagateTranslation(true);
+        grappleLine.propagateRotation(true);
+        grappleLine.propagateScale(true);
+        grappleLine.applyParentRotationToPosition(true);
+
+        grappleLine.setLocalTranslation(
+            new Matrix4f().translation(0.25f, 1.55f, 0.25f)
+        );
+        grappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+        grappleLine.setLocalRotation(
+            new Matrix4f().rotationX((float)java.lang.Math.toRadians(45.0f))
+        );
+
+        activeSkinnyGrappleLines.add(grappleLine);
+        */
+        // store references
+        activeSkinnyPlasma.add(plasma);
+        activeSkinnyGrapple.add(grapple);
+
+        Quaternionf rot = new Quaternionf();
+
+        PhysicsObject p = engine.getSceneGraph().addPhysicsCapsule(
+            1.0f,
+            spawnPos,
+            rot,
+            1,
+            0.4f,
+            1.0f
+        );
+
+        p.setFriction(0.6f);
+        p.setDamping(0.1f, 0.8f);
+        p.setBounciness(0.0f);
+        p.disableSleeping();
+
+        s.setPhysicsObject(p);
+
+        activeSkinnys.add(s);
+        activeSkinnyNetworkIds.add(nextNetworkEnemyId++);
+        activeSkinnyPhysics.add(p);
+        activeSkinnyHealth.add(100);
+        activeSkinnyDead.add(false);
+        activeSkinnyBounceTimers.add((float)Math.random());
+        activeSkinnyFireCooldowns.add((float)(Math.random() * 1.5f));
+    }
+
+    private void spawnSkinnyWave()
+    {
+        Vector3f[] points = {
+            new Vector3f(-45.29f,0,-39.20f),
+            new Vector3f(31.86f,0,-67.46f),
+            new Vector3f(59.16f,0,35.07f),
+            new Vector3f(2.05f,0,65.86f),
+            new Vector3f(-62.13f,0,13.12f),
+            new Vector3f(-60.20f,0,-64.62f),
+            new Vector3f(-83.75f,0,28.96f)
+        };
+
+        for (Vector3f base : points)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                Vector3f offset = new Vector3f(
+                    (float)(Math.random()*8 - 4),
+                    0,
+                    (float)(Math.random()*8 - 4)
+                );
+
+                spawnSkinny(new Vector3f(base).add(offset));
+            }
+        }
+
+        System.out.println("Spawned " + (points.length * 10) + " skinnys");
+    }
+
+    private void updateSkinnys(float dt)
+    {
+        if (player == null) return;
+
+        for (int i = 0; i < activeSkinnys.size(); i++)
+        {
+            if (activeSkinnyDead.get(i)) continue;
+
+            PhysicsObject p = activeSkinnyPhysics.get(i);
+            Vector3f pos = p.getLocation();
+
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+            if (targetPos == null)
+                continue;
+
+            float timer = activeSkinnyBounceTimers.get(i) - dt;
+            
+        if (timer <= 0.0f)
+        {
+            Vector3f dir = new Vector3f(targetPos).sub(pos);
+            if (dir.length() > 0.01f) dir.normalize();
+
+            p.setLinearVelocity(new float[]{
+                dir.x * 4.0f,
+                8.0f,
+                dir.z * 4.0f
+            });
+
+
+            timer = 1.5f + (float)Math.random();
+        }
+
+        /*
+        // Disabled alien grapple lines; they clutter the screen when many aliens jump.
+        float[] vel = p.getLinearVelocity();
+
+        if (i < activeSkinnyGrappleLines.size())
+        {
+            GameObject line = activeSkinnyGrappleLines.get(i);
+
+            if (line != null)
+            {
+                if (vel[1] > 0.0f)
+                {
+                    float height = java.lang.Math.max(0.5f, p.getLocation().y() - 2.0f);
+
+                    line.setLocalScale(
+                        new Matrix4f().scaling(0.05f, height * 1.2f, 0.05f)
+                    );
+
+                    line.setLocalTranslation(
+                        new Matrix4f().translation(0.25f, 1.55f + height * 0.6f, 0.25f)
+                    );
+
+                    line.setLocalRotation(
+                        new Matrix4f().rotationX((float)java.lang.Math.toRadians(45.0f))
+                    );
+                }
+                else
+                {
+                    line.setLocalScale(new Matrix4f().scaling(0.0001f));
+                }
+            }
+        }
+        */
+        // === SKINNY SHOOTING ===
+        float dist = new Vector3f(targetPos).sub(pos).length();
+
+        float fireCd = activeSkinnyFireCooldowns.get(i) - dt;
+
+        if (fireCd <= 0.0f && dist <= 20.0f)
+        {
+            GameObject skinnyGun = null;
+
+            if (i < activeSkinnyPlasma.size())
+                skinnyGun = activeSkinnyPlasma.get(i);
+
+            Vector3f muzzleBase;
+
+            if (skinnyGun != null)
+                muzzleBase = skinnyGun.getWorldLocation();
+            else
+                muzzleBase = new Vector3f(pos.x, pos.y + 1.5f, pos.z);
+
+            Vector3f fireDir = new Vector3f(targetPos)
+                .add(0.0f, 1.0f, 0.0f)
+                .sub(muzzleBase)
+                .normalize();
+
+            Vector3f muzzlePos = new Vector3f(muzzleBase)
+                .add(new Vector3f(fireDir).mul(0.75f));
+            spawnEnemyBullet(muzzlePos, fireDir, true);
+
+            if (protClient != null && isHostClient)
+                protClient.sendEnemyBullet(muzzlePos, fireDir, true);
+
+            gameAudio.playNpcPlasma(muzzlePos);
+
+            fireCd = 1.5f;
+        }
+
+        activeSkinnyFireCooldowns.set(i, fireCd);
+        activeSkinnyBounceTimers.set(i, timer);
+        }
+    }
+
     @Override
     public void loadSkyBoxes()
     {
         spaceSkyBox = (engine.getSceneGraph()).loadCubeMap("blueSpace");
-        fluffySkyBox = (engine.getSceneGraph()).loadCubeMap("fluffyClouds");
+        islandSkyBox = (engine.getSceneGraph()).loadCubeMap("island");
+        lushSkyBox = (engine.getSceneGraph()).loadCubeMap("lush");
+        plainsSkyBox = (engine.getSceneGraph()).loadCubeMap("plains");
         (engine.getSceneGraph()).setSkyBoxEnabled(true);
     }
 
@@ -899,6 +1227,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public void loadShapes()
     {
         terrS = new TerrainPlane(1000);
+        brainS = new AnimatedShape("brain.rkm", "brain.rks");
+        brainS.loadAnimation("FLOAT", "brainFloat.rka");
+        skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
+        skinnyS.loadAnimation("GRAPPLE", "skinnyGrapple.rka");
+        grappleGunS = new ImportedModel("grapple.obj");
+        skinnyGrappleLineS = new Cube();
         switch (mapSelection)
         {
             case 0:
@@ -914,11 +1248,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 ghostS.loadAnimation("SWAP", "RobotSwapGun.rka");
                 ghostS.loadAnimation("SWAPRUN", "RobotSwapGunRun.rka");
 
-                skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
-                skinnyS.loadAnimation("WAVE", "wave.rka");
-
                 apeS = new AnimatedShape("ape.rkm", "ape.rks");
                 apeS.loadAnimation("RUN", "apeRun.rka");
+                apeS.loadAnimation("DIE", "apeDie.rka");
 
                 smallBuildingS = new ImportedModel("smallBuilding.obj");
                 smallBuilding2S = new ImportedModel("smallBuilding2.obj");
@@ -935,7 +1267,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 bulletSphereS = new Sphere();
 
                 ufoS = new ImportedModel("ufo.obj");
-
+                
                 break;
 
             case 1:
@@ -960,21 +1292,347 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 pistolS = new ImportedModel("pistol.obj");
 
                 bulletSphereS = new Sphere();
-
                 break;
         }
+    }
 
-        shopState.loadShape();
+    private void setupCaseOneStart()
+    {
+        float playerY = terr.getHeight(0.0f, 0.0f) + playerVisualYOffset + 2.0f;
+
+        playerP.setLocation(new float[] { 0.0f, playerY, 10.0f });
+        playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        player.setLocalTranslation(
+            new Matrix4f().translation(0.0f, playerY - playerVisualYOffset, 0.0f)
+        );
+
+        float brainZ = -8.0f;
+        float brainY = terr.getHeight(0.0f, brainZ) + 1.0f;
+
+        if (brain != null)
+        {
+            brain.setLocalTranslation(new Matrix4f().translation(1.5f, brainY, brainZ));
+            brain.setLocalScale(new Matrix4f().scaling(0.1f));
+            brainActive = false;
+            brainFloating = false;
+            brainDefeated = false;
+            brainHealth = brainMaxHealth;
+            brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
+            brainCircleAngle = 0.0f;
+            brainCircleDir = 1.0f;
+            brainRushing = false;
+        }
+
+        playerKnockedOffLevelTwo = false;
+        playerHasGrapple = false;
+
+        gameAudio.stopMusic();
+
+        levelTwoMusicPending = true;
+        levelTwoMusicTimer = levelTwoMusicDelay;
+        bossMusicStarted = false;
+
+        scheduleLevelTwoArrivalEvent();
+    }
+
+    private void updateBrainAnimation()
+    {
+        if (brain == null || brainS == null || mapSelection != 1)
+            return;
+
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brain.getWorldLocation());
+
+        if (targetPos == null)
+            return;
+
+        float dist = targetPos.distance(brain.getWorldLocation());
+
+        if (!brainFloating && dist <= 8.0f)
+        {
+            brainS.playAnimation("FLOAT", 0.3f, AnimatedShape.EndType.LOOP, 0);
+            brainFloating = true;
+
+            brainActive = true;
+            startBossMusic();
+            brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
+            brainCircleAngle = 0.0f;
+            brainCircleDir = 1.0f;
+            brainRushing = false;
+        }
+    }
+
+    private void startBossMusic()
+    {
+        if (bossMusicStarted)
+            return;
+
+        bossMusicStarted = true;
+        levelTwoMusicPending = false;
+
+        gameAudio.playBossMusic();
+    }
+
+    private void updateBrainBoss(float dt)
+    {
+        if (!brainActive || brain == null || player == null || mapSelection != 1)
+            return;
+
+        if (brainRushing)
+        {
+            updateBrainRush(dt);
+            return;
+        }
+
+        updateBrainCircle(dt);
+
+        if (brainShotsLeft > 0)
+        {
+            updateBrainShooting(dt);
+            return;
+        }
+
+        brainActionTimer -= dt;
+
+        if (brainActionTimer <= 0.0f)
+        {
+            startRandomBrainAction();
+            brainActionTimer = 3.0f + (float)(Math.random() * 2.0f);
+        }
+    }
+
+    private void updateBrainCircle(float dt)
+    {
+        Vector3f playerPos = getClosestPlayerOrGhostTarget(brain.getWorldLocation());
+
+        if (playerPos == null)
+            return;
+
+        brainCircleAngle += brainCircleDir * dt * 0.8f;
+
+        if (Math.random() < 0.005f)
+            brainCircleDir *= -1.0f;
+
+        float radius = 12.0f;
+        float height = 8.0f;
+
+        float x = playerPos.x + (float)java.lang.Math.cos(brainCircleAngle) * radius;
+        float z = playerPos.z + (float)java.lang.Math.sin(brainCircleAngle) * radius;
+        float y = playerPos.y + height + (float)java.lang.Math.sin(elapsTime * 2.0f) * 1.5f;
+
+        brain.setLocalTranslation(new Matrix4f().translation(x, y, z));
+
+        Vector3f toPlayer = new Vector3f(playerPos).sub(brain.getWorldLocation());
+
+        if (toPlayer.lengthSquared() > 0.001f)
+        {
+            float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+            brain.setLocalRotation(new Matrix4f().rotationY(yaw));
+        }
+    }
+
+    private void startRandomBrainAction()
+    {
+        brainAttackType = (int)(Math.random() * 4.0f);
+
+        switch (brainAttackType)
+        {
+            case 0:
+                // sine arc stream
+                brainShotsLeft = 30;
+                brainShotTimer = 0.0f;
+                break;
+
+            case 1:
+                // 5x5 square burst
+                brainSquareBurst();
+                break;
+
+            case 2:
+                // fast random spread
+                brainShotsLeft = 45;
+                brainShotTimer = 0.0f;
+                break;
+
+            case 3:
+                // rush attack
+                Vector3f targetPos = getClosestPlayerOrGhostTarget(brain.getWorldLocation());
+
+                if (targetPos != null)
+                {
+                    brainRushTarget.set(targetPos);
+                    brainRushing = true;
+                }
+                break;
+        }
+    }
+
+    private void updateBrainShooting(float dt)
+    {
+        brainShotTimer -= dt;
+
+        float delay = brainAttackType == 2 ? 0.035f : 0.055f;
+
+        if (brainShotTimer > 0.0f)
+            return;
+
+        if (brainAttackType == 0)
+            brainSineShot();
+        else if (brainAttackType == 2)
+            brainRandomShot();
+
+        brainShotsLeft--;
+        brainShotTimer = delay;
+    }
+
+    private void brainSineShot()
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brainPos);
+
+        if (targetPos == null)
+            return;
+
+        Vector3f target = new Vector3f(targetPos).add(0.0f, 1.0f, 0.0f);
+
+        Vector3f dir = new Vector3f(target).sub(brainPos).normalize();
+
+        Vector3f side = new Vector3f(-dir.z, 0.0f, dir.x);
+        if (side.lengthSquared() > 0.001f)
+            side.normalize();
+
+        float wave = (float)java.lang.Math.sin((30 - brainShotsLeft) * 0.55f) * 0.45f;
+
+        dir.add(new Vector3f(side).mul(wave)).normalize();
+
+        Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
+
+        spawnEnemyBullet(muzzle, dir, true);
+        if (protClient != null && isHostClient)
+            protClient.sendEnemyBullet(muzzle, dir, true);
+        gameAudio.playNpcPlasma(muzzle);
+    }
+
+    private void brainRandomShot()
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brainPos);
+
+        if (targetPos == null)
+            return;
+
+        Vector3f target = new Vector3f(targetPos).add(0.0f, 1.0f, 0.0f);
+
+        Vector3f dir = new Vector3f(target).sub(brainPos).normalize();
+
+        dir.add(
+            ((float)Math.random() - 0.5f) * 0.7f,
+            ((float)Math.random() - 0.5f) * 0.35f,
+            ((float)Math.random() - 0.5f) * 0.7f
+        ).normalize();
+
+        Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
+
+        spawnEnemyBullet(muzzle, dir, true);
+        if (protClient != null && isHostClient)
+            protClient.sendEnemyBullet(muzzle, dir, true);
+        gameAudio.playNpcPlasma(muzzle);
+    }
+
+    private void brainSquareBurst()
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(brainPos);
+
+        if (targetPos == null)
+            return;
+
+        Vector3f target = new Vector3f(targetPos).add(0.0f, 1.0f, 0.0f);
+
+        Vector3f forward = new Vector3f(target).sub(brainPos).normalize();
+        Vector3f right = new Vector3f(-forward.z, 0.0f, forward.x);
+
+        if (right.lengthSquared() < 0.001f)
+            right.set(1.0f, 0.0f, 0.0f);
+        else
+            right.normalize();
+
+        Vector3f up = new Vector3f(0.0f, 1.0f, 0.0f);
+
+        for (int x = -2; x <= 2; x++)
+        {
+            for (int y = -2; y <= 2; y++)
+            {
+                Vector3f dir = new Vector3f(forward)
+                    .add(new Vector3f(right).mul(x * 0.15f))
+                    .add(new Vector3f(up).mul(y * 0.15f))
+                    .normalize();
+
+                Vector3f muzzle = new Vector3f(brainPos).add(new Vector3f(dir).mul(1.5f));
+                spawnEnemyBullet(muzzle, dir, true);
+
+                if (protClient != null && isHostClient)
+                    protClient.sendEnemyBullet(muzzle, dir, true);
+            }
+        }
+
+        gameAudio.playNpcPlasma(brainPos);
+    }
+
+    private void updateBrainRush(float dt)
+    {
+        Vector3f brainPos = brain.getWorldLocation();
+        Vector3f toTarget = new Vector3f(brainRushTarget).sub(brainPos);
+
+        if (toTarget.length() <= 1.0f)
+        {
+            brainRushing = false;
+            return;
+        }
+
+        toTarget.normalize();
+
+        float rushSpeed = 22.0f;
+        Vector3f newPos = new Vector3f(brainPos).add(toTarget.mul(rushSpeed * dt));
+
+        brain.setLocalTranslation(new Matrix4f().translation(newPos));
+
+        float yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+        brain.setLocalRotation(new Matrix4f().rotationY(yaw));
+    }
+
+    private String getBrainHealthBar()
+    {
+        int bars = java.lang.Math.max(0, brainHealth / 250);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Brain[");
+
+        for (int i = 0; i < bars; i++)
+            sb.append("=");
+
+        for (int i = bars; i < 20; i++)
+            sb.append(" ");
+
+        sb.append("]");
+
+        return sb.toString();
     }
 
     @Override
     public void loadTextures()
     {
-        playerTx = new TextureImage("robot.jpg");
+        robotTextures[0] = new TextureImage("robot.jpg");
+        robotTextures[1] = new TextureImage("robot1.jpg");
+        robotTextures[2] = new TextureImage("robot2.jpg");
+        robotTextures[3] = new TextureImage("robot3.jpg");
+
+        playerTx = robotTextures[avatarSelection];
         ghostT = playerTx;
 
         skinnyTx = new TextureImage("skinny.jpg");
         apeTx = new TextureImage("ape.jpg");
+        brainTx = new TextureImage("brain.jpg");
 
         smallBuildingTx = new TextureImage("smallBuilding.png");
         smallBuilding2Tx = new TextureImage("smallBuilding2.png");
@@ -997,6 +1655,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         bulletBlueTx = new TextureImage("plasmaBullet.jpg");
 
         ufoTx = new TextureImage("ufo.png");
+
+        grappleGunTx = new TextureImage("grapple.png");
     }
 
     @Override
@@ -1007,67 +1667,53 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         player.setLocalScale(new Matrix4f().scaling(playerScale));
         prevPlayerPos.set(player.getWorldLocation());
         player.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotationY((float)Math.toRadians(270.0f)));
+            .rotationY((float)java.lang.Math.toRadians(270.0f)));
         playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
-
-        skinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
-        skinny.setLocalTranslation(new Matrix4f().translation(0.0f, 1.0f, -5.0f));
-        skinny.setLocalScale(new Matrix4f().scaling(1.0f));
-        skinnyS.playAnimation("WAVE", 0.3f, AnimatedShape.EndType.LOOP, 0);
-
-        ape = new GameObject(GameObject.root(), apeS, apeTx);
-        ape.setLocalTranslation(new Matrix4f().translation(5.0f, 1.0f, -5.0f));
-        ape.setLocalScale(new Matrix4f().scaling(0.01f));
-        ape.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotationX((float)Math.toRadians(90.0f))
-            .rotateZ((float)Math.toRadians(180.0f)));
-        apeS.playAnimation("RUN", 0.25f, AnimatedShape.EndType.LOOP, 0);
-
-        apePlasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
-        apePlasmaRifle.setLocalTranslation(new Matrix4f().translation(-0.05f, 1.5f, 0.7f));
-        apePlasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(0.0f)));
-        apePlasmaRifle.setLocalScale(new Matrix4f().scaling(0.5f));
-        apePlasmaRifle.setParent(ape);
-        apePlasmaRifle.propagateTranslation(true);
-        apePlasmaRifle.propagateRotation(true);
-        apePlasmaRifle.propagateScale(true);
-        apePlasmaRifle.applyParentRotationToPosition(true);
 
         pickupManager.buildObjects(ammoS, ammoTx, healthS, healthTx);
 
         knife = new GameObject(GameObject.root(), knifeS, knifeTx);
         knife.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        knife.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
+        knife.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
         knife.setLocalScale(new Matrix4f().scaling(weaponScale));
         attachWeaponToPlayer(knife);
 
         pistol = new GameObject(GameObject.root(), pistolS, pistolTx);
         pistol.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        pistol.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
+        pistol.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
         pistol.setLocalScale(new Matrix4f().scaling(weaponScale));
         attachWeaponToPlayer(pistol);
 
         plasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
         plasmaRifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
+        plasmaRifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
         plasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale));
         attachWeaponToPlayer(plasmaRifle);
 
         rifle = new GameObject(GameObject.root(), rifleS, rifleTx);
         rifle.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
-        rifle.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
+        rifle.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
         rifle.setLocalScale(new Matrix4f().scaling(weaponScale));
-        rifle.getRenderStates().setModelOrientationCorrection((new Matrix4f()).rotateX((float)Math.toRadians(90.0f)));
+        rifle.getRenderStates().setModelOrientationCorrection((new Matrix4f()).rotateX((float)java.lang.Math.toRadians(90.0f)));
         attachWeaponToPlayer(rifle);
 
         shotGun = new GameObject(GameObject.root(), shotGunS, shotGunTx);
         shotGun.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y - 0.25f, weaponPos.z - 0.2f));
-        shotGun.setLocalRotation(new Matrix4f().rotationY((float)Math.toRadians(weaponRotY)));
+        shotGun.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
         shotGun.setLocalScale(new Matrix4f().scaling(weaponScale));
         shotGun.getRenderStates().setModelOrientationCorrection((new Matrix4f())
-            .rotateY((float)Math.toRadians(90.0f))
-            .rotateX((float)Math.toRadians(90.0f)));
+            .rotateY((float)java.lang.Math.toRadians(90.0f))
+            .rotateX((float)java.lang.Math.toRadians(90.0f)));
         attachWeaponToPlayer(shotGun);
+
+        grapplePickup = new GameObject(GameObject.root(), grappleGunS, grappleGunTx);
+        grapplePickup.setLocalScale(new Matrix4f().scaling(0.0001f));
+        grapplePickup.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+
+        playerGrappleLine = new GameObject(GameObject.root(), skinnyGrappleLineS);
+        playerGrappleLine.getRenderStates().setColor(new Vector3f(0.6f, 0.6f, 0.6f));
+        playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+        playerGrappleLine.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
 
         weaponInventory.reset();
         isFiring = false;
@@ -1075,8 +1721,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         centerBuilding = new GameObject(GameObject.root(), centerBuildingS, centerBuildingTx);
         centerBuilding.setLocalTranslation(new Matrix4f().translation(0.0f, 0.0f, 0.0f));
-        centerBuilding.setLocalScale(new Matrix4f().scaling(1.5f));
-
+        centerBuilding.setLocalScale(new Matrix4f().scaling(4.0f));
+        centerBuilding.getRenderStates().setModelOrientationCorrection(new Matrix4f().rotationX((float)Math.toRadians(90.0f)));
         float[][] sbPositions = {
             {-52.0f, 72.0f}, {48.0f, -65.0f}, {79.0f, -21.0f}, {-83.0f, 39.0f},
             {-18.0f, 40.0f}, {20.0f, -38.0f}, {24.0f, 5.0f}, {28.0f, 38.0f}
@@ -1088,7 +1734,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         };
 
         ufoWaveManager.buildObjects(ufoS, ufoTx);
-        ufoWaveManager.reset();
 
         for (int i = 0; i < smallBuildings.length; i++)
         {
@@ -1109,9 +1754,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         terr.setLocalScale((new Matrix4f()).scaling(100.0f, 50.0f, 100.0f));
         terr.getRenderStates().setTiling(1);
 
-        bulletManager.buildObjects(bulletSphereS, bulletYellowTx, bulletBlueTx);
+        brain = new GameObject(GameObject.root(), brainS, brainTx);
+        brain.setLocalScale(new Matrix4f().scaling(0.1f));
+        brain.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+        brain.getRenderStates().setModelOrientationCorrection(new Matrix4f().rotationX((float)java.lang.Math.toRadians(180.0f)));
 
-        shopState.buildObjects(centerBuildingTx);
+        bulletManager.buildObjects(bulletSphereS, bulletYellowTx, bulletBlueTx);
 
         applyMapSelection();
     }
@@ -1126,6 +1774,22 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         engine.getSceneGraph().addLight(mainLight);
 
         pickupManager.initializeLights(engine);
+
+        tractorBeamLight = new Light();
+        tractorBeamLight.setType(Light.LightType.SPOTLIGHT);
+        tractorBeamLight.setAmbient(0.0f, 0.2f, 0.3f);
+        tractorBeamLight.setDiffuse(0.2f, 0.9f, 1.0f);
+        tractorBeamLight.setSpecular(0.2f, 0.9f, 1.0f);
+        tractorBeamLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+        tractorBeamLight.setCutoffAngle(25.0f);
+        tractorBeamLight.setOffAxisExponent(1.5f);
+        tractorBeamLight.setConstantAttenuation(1.0f);
+        tractorBeamLight.setLinearAttenuation(0.01f);
+        tractorBeamLight.setQuadraticAttenuation(0.001f);
+        tractorBeamLight.setLocation(new Vector3f(0.0f, 35.0f, 0.0f));
+        tractorBeamLight.disable();
+
+        engine.getSceneGraph().addLight(tractorBeamLight);
     }
 
     @Override
@@ -1158,6 +1822,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private void initAudio()
     {
         gameAudio.initialize(engine);
+        gameAudio.playLevel1Music();
     }
 
     private void setEarParameters()
@@ -1182,10 +1847,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         physicsEngine = engine.getSceneGraph().getPhysicsEngine();
         physicsEngine.setGravity(gravity);
 
-        rebuildTerrainPhysicsObject();
-        placePlayerAtTerrainStart();
-
-        Vector3f loc = getPlayerPhysicsCenter(player.getWorldLocation());
+        Vector3f loc = player.getWorldLocation();
         Quaternionf rot = new Quaternionf();
         player.getWorldRotation().getNormalizedRotation(rot);
 
@@ -1204,6 +1866,36 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         playerP.setAngularFactor(0f);
         player.setPhysicsObject(playerP);
 
+		loc = terr.getWorldLocation();
+		rot = new Quaternionf();
+		(terr.getWorldRotation()).getNormalizedRotation(rot);
+
+        terrainP0 = engine.getSceneGraph().addPhysicsStaticTerrainMesh(
+            loc, rot, heightMap0, 100.0f, 50.0f, 100
+        );
+
+        terrainP1 = engine.getSceneGraph().addPhysicsStaticTerrainMesh(
+            new Vector3f(0.0f, -10000.0f, 0.0f), rot, heightMap1, 100.0f, 50.0f, 100
+        );
+
+        terrainP0.setBounciness(0.0f);
+        terrainP0.setFriction(1.0f);
+        terrainP0.disableSleeping();
+
+        terrainP1.setBounciness(0.0f);
+        terrainP1.setFriction(1.0f);
+        terrainP1.disableSleeping();
+
+        switchTerrainPhysics();
+
+        addBuildingBoxCollider(centerBuilding, 18.0f, 18.0f, 18.0f);
+
+        for (int i = 0; i < smallBuildings.length; i++)
+            addBuildingBoxCollider(smallBuildings[i], 8.0f, 10.0f, 8.0f);
+
+        for (int i = 0; i < smallBuildings2.length; i++)
+            addBuildingBoxCollider(smallBuildings2[i], 12.0f, 12.0f, 12.0f);
+
         bulletManager.setPhysicsEngine(physicsEngine);
 
         engine.enableGraphicsWorldRender();
@@ -1211,6 +1903,428 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             engine.enablePhysicsWorldRender();
         else
             engine.disablePhysicsWorldRender();
+    }
+
+    private boolean isButtonPressed(net.java.games.input.Event e)
+    {
+        return e != null && e.getValue() > 0.5f;
+    }
+
+    private boolean acceptGamepadMenuInput()
+    {
+        long now = System.currentTimeMillis();
+        if (now - lastGamepadMenuInputTime < GAMEPAD_MENU_REPEAT_MS)
+            return false;
+
+        lastGamepadMenuInputTime = now;
+        return true;
+    }
+
+    private void menuMoveUp()
+    {
+        menu.moveUp();
+        menuSelection = menu.getSelectedIndex();
+    }
+
+    private void menuMoveDown()
+    {
+        menu.moveDown();
+        menuSelection = menu.getSelectedIndex();
+    }
+
+    private void menuPreviousMap()
+    {
+        if (menu.getSelectedIndex() == 1)
+        {
+            menu.previousMap();
+            setMapSelection(menu.getSelectedMapIndex());
+            applyMapSelection();
+        }
+    }
+
+    private void menuNextMap()
+    {
+        if (menu.getSelectedIndex() == 1)
+        {
+            menu.nextMap();
+            setMapSelection(menu.getSelectedMapIndex());
+            applyMapSelection();
+        }
+    }
+
+    private void activateCurrentMenuSelection()
+    {
+        switch (menu.activateSelection())
+        {
+            case START_GAME:
+                gameState = GameState.ROBOT_SELECT;
+                applyAvatarSelectionTexture();
+                break;
+
+            case SELECT_MAP:
+                menu.nextMap();
+                setMapSelection(menu.getSelectedMapIndex());
+                applyMapSelection();
+                break;
+
+            case MULTIPLAYER:
+            case OPTIONS:
+                break;
+
+            case QUIT:
+                isShuttingDown = true;
+                mouseModeInitiated = false;
+                isRecentering = false;
+                gameAudio.releaseAll();
+                shutdown();
+                System.exit(0);
+                break;
+
+            default:
+                System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
+                break;
+        }
+    }
+
+    private void beginFireInput()
+    {
+        if (gameState != GameState.PLAYING) return;
+
+        if (!weaponInventory.currentUsesBullets()) return;
+        if (weaponInventory.isReloading()) return;
+        if (weaponInventory.getCurrentWeapon() == WeaponType.SHOTGUN && isShotgunPumping()) return;
+
+        if (weaponInventory.getCurrentMagazineAmmo() <= 0)
+        {
+            weaponInventory.beginReload();
+            return;
+        }
+
+        if (weaponInventory.isAutomaticWeapon())
+        {
+            isFiring = true;
+            if (!weaponInventory.isCoolingDown())
+                fireCurrentWeapon();
+        }
+        else
+        {
+            if (!weaponInventory.isCoolingDown())
+                fireCurrentWeapon();
+        }
+    }
+
+    private void endFireInput()
+    {
+        isFiring = false;
+        gameAudio.stopRifleLoopSound();
+    }
+
+    private void markGamepadFireHeld()
+    {
+        gamepadFireSeenThisFrame = true;
+
+        if (!gamepadFireHeld)
+        {
+            gamepadFireHeld = true;
+            beginFireInput();
+        }
+    }
+
+    private void finishGamepadFireIfReleased()
+    {
+        if (gamepadFireHeld && !gamepadFireSeenThisFrame)
+        {
+            gamepadFireHeld = false;
+            endFireInput();
+        }
+    }
+
+    private void applyGamepadLook(float dt)
+    {
+        if (gameState != GameState.PLAYING || orbitCam == null) return;
+
+        if (java.lang.Math.abs(gamepadLookX) > GAMEPAD_DEADZONE)
+            orbitCam.addAzimuth(-gamepadLookX * GAMEPAD_LOOK_SPEED * dt);
+
+        if (java.lang.Math.abs(gamepadLookY) > GAMEPAD_DEADZONE)
+            orbitCam.addElevation(gamepadLookY * GAMEPAD_LOOK_SPEED * dt);
+    }
+
+    private class GamepadLookXAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            gamepadLookX = e.getValue();
+        }
+    }
+
+    private class GamepadLookYAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            gamepadLookY = e.getValue();
+        }
+    }
+
+    private class GamepadFireAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (e.getValue() > GAMEPAD_DEADZONE)
+                markGamepadFireHeld();
+        }
+    }
+
+    private class GamepadButtonFireAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            markGamepadFireHeld();
+        }
+    }
+
+    private class GamepadReloadAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+                weaponInventory.beginReload();
+        }
+    }
+
+    private class GamepadGrappleAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+                startPlayerGrapple();
+        }
+    }
+
+    private class GamepadNextWeaponAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            {
+                weaponInventory.selectNext();
+                updateWeaponVisibility();
+            }
+        }
+    }
+
+    private class GamepadPreviousWeaponAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            {
+                weaponInventory.selectPrevious();
+                updateWeaponVisibility();
+            }
+        }
+    }
+
+    private class GamepadAcceptAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            if (!isButtonPressed(e)) return;
+
+            if (playerDeathScreenActive)
+            {
+                continueAfterPlayerDeath();
+                return;
+            }
+
+        if (gameState == GameState.MENU)
+        {
+            activateCurrentMenuSelection();
+            return;
+        }
+
+        if (gameState == GameState.ROBOT_SELECT)
+        {
+            startSelectedGame();
+            return;
+        }
+        }
+    }
+
+    private class GamepadLeftStickYAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            float v = e.getValue();
+
+            if (java.lang.Math.abs(v) < GAMEPAD_DEADZONE)
+                return;
+
+            if (gameState == GameState.MENU)
+            {
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) menuMoveUp();
+                else menuMoveDown();
+
+                return;
+            }
+
+            if (gameState != GameState.PLAYING || cam == null)
+                return;
+
+            Vector3f camN = cam.getN();
+            Vector3f forward = new Vector3f(camN.x, 0.0f, camN.z);
+
+            if (forward.lengthSquared() < 0.000001f)
+                return;
+
+            forward.normalize();
+
+            // stick up is usually negative, so this makes up = forward
+            forward.mul(-v);
+
+            movePlayerPhysics(forward, currentMoveSpeed);
+
+            if (protClient != null && player != null)
+                protClient.sendMoveMessage(player.getWorldLocation());
+        }
+    }
+
+    private class GamepadLeftStickXAction extends AbstractInputAction
+    {
+        @Override
+        public void performAction(float time, net.java.games.input.Event e)
+        {
+            float v = e.getValue();
+
+            if (java.lang.Math.abs(v) < GAMEPAD_DEADZONE)
+                return;
+
+            if (gameState == GameState.MENU)
+            {
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) menuPreviousMap();
+                else menuNextMap();
+
+                return;
+            }
+
+            if (gameState == GameState.ROBOT_SELECT)
+            {
+                if (java.lang.Math.abs(v) < GAMEPAD_DEADZONE) return;
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) previousAvatarSelection();
+                else nextAvatarSelection();
+
+                return;
+            }
+
+            if (gameState != GameState.PLAYING || cam == null)
+                return;
+
+            Vector3f camN = cam.getN();
+            Vector3f forward = new Vector3f(camN.x, 0.0f, camN.z);
+
+            if (forward.lengthSquared() < 0.000001f)
+                return;
+
+            forward.normalize();
+
+            Vector3f right = new Vector3f(forward.z, 0.0f, -forward.x);
+            right.normalize();
+
+            // negate
+            right.mul(-v);
+
+            movePlayerPhysics(right, currentMoveSpeed);
+
+            if (protClient != null && player != null)
+                protClient.sendMoveMessage(player.getWorldLocation());
+        }
+    }
+
+    private String getRobotSelectText()
+    {
+        StringBuilder sb = new StringBuilder("Pick your robot: ");
+
+        for (int i = 0; i < avatarNames.length; i++)
+        {
+            if (i > 0) sb.append("   ");
+
+            if (i == avatarSelection)
+                sb.append("<").append(avatarNames[i]).append(">");
+            else
+                sb.append(avatarNames[i]);
+        }
+
+        return sb.toString();
+    }
+
+    private void previousAvatarSelection()
+    {
+        avatarSelection = (avatarSelection - 1 + avatarNames.length) % avatarNames.length;
+        applyAvatarSelectionTexture();
+    }
+
+    private void nextAvatarSelection()
+    {
+        avatarSelection = (avatarSelection + 1) % avatarNames.length;
+        applyAvatarSelectionTexture();
+    }
+
+    private void applyAvatarSelectionTexture()
+    {
+        if (robotTextures == null) return;
+        if (avatarSelection < 0 || avatarSelection >= robotTextures.length) return;
+        if (robotTextures[avatarSelection] == null) return;
+
+        playerTx = robotTextures[avatarSelection];
+        ghostT = playerTx;
+
+        if (player != null)
+            player.setTextureImage(playerTx);
+    }
+
+    private void startSelectedGame()
+    {
+        setMapSelection(menu.getSelectedMapIndex());
+        applyMapSelection();
+        switchTerrainPhysics();
+
+        applyAvatarSelectionTexture();
+
+        if (mapSelection == 1)
+        {
+            hideMapZeroBuildings();
+            pendingCaseOneStart = true;
+            pendingSkinnySpawn = true;
+        }
+
+        gameState = GameState.PLAYING;
+        firstPersonMode = true;
+        physicsDebug = false;
+        engine.disablePhysicsWorldRender();
+
+        engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
+        engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
+        engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
+
+        if (protClient != null)
+            protClient.sendCreateMessage(getPlayerPosition());
     }
 
     @Override
@@ -1303,6 +2417,40 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.B,togglePlasmaFireMode,
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
 
+        // gamepad left stick: gameplay movement + menu navigation
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.Y, new GamepadLeftStickYAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.X, new GamepadLeftStickXAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // gamepad look: right stick
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.RX, new GamepadLookXAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.RY, new GamepadLookYAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // fire: right trigger if your controller reports it as Z or RZ
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.Z, new GamepadFireAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Axis.RZ, new GamepadFireAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // backup fire: right bumper
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._5, new GamepadButtonFireAction(),
+            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
+
+        // buttons: A accept, B grapple, X reload, Y next weapon, LB previous weapon
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._0, new GamepadAcceptAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._1, new GamepadGrappleAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._2, new GamepadReloadAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._3, new GamepadNextWeaponAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+        im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._4, new GamepadPreviousWeaponAction(),
+            InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
+
         setupNetworking();
         initAudio();
         setEarParameters();
@@ -1323,6 +2471,40 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             engine.getHUDmanager().setHUD1(menu.getTitleText(), titleColor, 520, 620);
             engine.getHUDmanager().setHUD2(menu.getMenuText(), bodyColor, 120, 560);
             engine.getHUDmanager().setHUD3(menu.getFooterText(), footerColor, 420, 120);
+
+            if (im != null)
+                im.update(0.016f);
+            return;
+        }
+
+        if (gameState == GameState.ROBOT_SELECT)
+        {
+            mouseModeInitiated = false;
+
+            engine.getHUDmanager().setHUD1(
+                "ROBOT SELECT",
+                new Vector3f(0.95f, 0.8f, 0.45f),
+                500,
+                620
+            );
+
+            engine.getHUDmanager().setHUD2(
+                getRobotSelectText(),
+                new Vector3f(1.0f, 1.0f, 1.0f),
+                300,
+                560
+            );
+
+            engine.getHUDmanager().setHUD3(
+                "Use A/D or LEFT STICK X to choose, ENTER/A button to start",
+                new Vector3f(0.7f, 0.9f, 0.7f),
+                300,
+                120
+            );
+
+            if (im != null)
+                im.update(0.016f);
+
             return;
         }
 
@@ -1331,46 +2513,79 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         float dt = (float)((currFrameTime - lastFrameTime) / 1000.0);
         elapsTime += dt;
 
+        if (playerDeathScreenActive && !isHostClient)
+        {
+            processNetworking(dt);
+
+            if (gm != null)
+                gm.updateGhostAnimations(dt);
+
+            showDeathContinueHud();
+            return;
+        }
+
+        if (pendingDebugFinalUfoBeam)
+        {
+            pendingDebugFinalUfoBeam = false;
+            debugStartFinalUfoBeam();
+        }
+
+        if (pendingCaseOneStart)
+        {
+            setupCaseOneStart();
+            pendingCaseOneStart = false;
+        }
+
+        if (pendingSkinnySpawn)
+        {
+            if (isHostClient)
+                spawnSkinnyWave();
+
+            pendingSkinnySpawn = false;
+        }
+
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
         setEarParameters();
         
         currentMoveDir.set(0, 0, 0);
-        if (gameState == GameState.PLAYING || gameState == GameState.BETWEEN_WAVES)
-        {
-            im.update(dt);
-        }
+        gamepadFireSeenThisFrame = false;
+
+        im.update(dt);
+
+        applyGamepadLook(dt);
+        finishGamepadFireIfReleased();
+
+        updateLevelTwoArrivalEvent(dt);
+
+        updateLevelTwoMusic(dt);
 
         if (playerP != null)
         {
-            float[] vel = playerP.getLinearVelocity();
-            if (currentMoveDir.lengthSquared() > 0.0001f)
+            // While the tractor beam owns the player, do not let WASD overwrite
+            // the upward beam velocity or add horizontal drift.
+            boolean beamControllingPlayer = tractorBeamActive && playerInTractorBeam;
+            boolean levelTwoThrowControllingPlayer = levelTwoThrowControlTimer > 0.0f;
+
+            if (!beamControllingPlayer && !levelTwoThrowControllingPlayer)
             {
-                currentMoveDir.normalize();
-                playerP.setLinearVelocity(new float[] {
-                    currentMoveDir.x * currentMoveSpeed,
-                    vel[1], // Preserve Y velocity for gravity/falling
-                    currentMoveDir.z * currentMoveSpeed
-                });
-            }
-            else
-            {
-                playerP.setLinearVelocity(new float[] { 0f, vel[1], 0f });
+                float[] vel = playerP.getLinearVelocity();
+                if (currentMoveDir.lengthSquared() > 0.0001f)
+                {
+                    currentMoveDir.normalize();
+                    playerP.setLinearVelocity(new float[] {
+                        currentMoveDir.x * currentMoveSpeed,
+                        vel[1], // Preserve Y velocity for gravity/falling
+                        currentMoveDir.z * currentMoveSpeed
+                    });
+                }
+                else
+                {
+                    playerP.setLinearVelocity(new float[] { 0f, vel[1], 0f });
+                }
             }
         }
 
         processNetworking(dt);
-
-        if (gameState == GameState.SHOP)
-        {
-            shopState.renderShopHud(engine, playerCredits);
-            return;
-        }
-
-        if (gameState == GameState.PAUSED)
-        {
-            engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
-            return;
-        }
 
         weaponInventory.updateTimers(dt);
         updateWeaponAudio(dt);
@@ -1391,13 +2606,67 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             syncGameObjectToPhysics(player);
         }
 
-        updateApeBehaviorTrees(dt);
+        if (isHostClient)
+            updateApeBehaviorTrees(dt);
 
-        updateApesFromPhysics();
-        ufoWaveManager.update(dt);
-        updateDeadApes(dt);
+        if (isHostClient)
+            updateSkinnys(dt);
+
+        checkGrapplePickup();
+
+        updatePlayerGrapple(dt);
+
+        if (isHostClient)
+            updateApesFromPhysics();
+
+        if (isHostClient)
+            updateSkinnysFromPhysics();
+
+        if (mapSelection == 0)
+        {
+            ufoWaveManager.update(dt);
+        }
+
+        if (isHostClient)
+            updateDeadApes(dt);
 
         bulletManager.update(dt);
+
+        updateTractorBeam(dt);
+        
+        // handle plasma burst firing
+        if (plasmaBurstShotsRemaining > 0)
+        {
+            plasmaBurstTimer -= dt;
+
+            if (plasmaBurstTimer <= 0.0f)
+            {
+                Vector3f forward = new Vector3f(cam.getN()).normalize();
+
+                Vector3f spread = new Vector3f(
+                    ((float)Math.random() - 0.5f) * 0.05f,
+                    ((float)Math.random() - 0.5f) * 0.05f,
+                    ((float)Math.random() - 0.5f) * 0.05f
+                );
+
+                Vector3f dir = new Vector3f(forward).add(spread).normalize();
+
+                Vector3f spawnPos = new Vector3f(player.getWorldLocation())
+                    .add(0.0f, 1.5f, 0.0f)
+                    .add(new Vector3f(dir).mul(1.5f));
+
+                bulletManager.spawnPlayerBullet(spawnPos, dir, true);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, dir, true);
+
+                weaponInventory.consumeCurrentRound();
+                gameAudio.playPlasmaRifle();
+
+                plasmaBurstShotsRemaining--;
+                plasmaBurstTimer = plasmaBurstDelay;
+            }
+        }
 
         if (!mouseModeInitiated) initMouseMode();
 
@@ -1412,62 +2681,128 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (gm != null) gm.updateGhostAnimations(dt);
         if (skinnyS != null) skinnyS.updateAnimation();
         if (apeS != null) apeS.updateAnimation();
+        if (brainS != null) brainS.updateAnimation();
+        
+        if (isHostClient)
+        {
+            updateBrainAnimation();
+            updateBrainBoss(dt);
+        }
 
-        gameState = shopState.updateWaveTimer(dt, gameState, ufoWaveManager.isActive(), activeApes.size(), ufoWaveManager);
+        // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
+        if (isHostClient && !ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
+        {
+            if (ufoWaveManager.isFinalWaveComplete())
+            {
+                startTractorBeam();
+            }
+            else
+            {
+                ufoWaveManager.startNextWave();
+
+                if (protClient != null && ufoWaveManager.isActive())
+                {
+                    protClient.sendUfoWaveStart(
+                        ufoWaveManager.getLastWaveTarget(),
+                        ufoWaveManager.getLastWaveApeCount(),
+                        ufoWaveManager.getLastWaveUfoIndex()
+                    );
+                }
+            }
+        }
 
         updateStaticObjectsToTerrain();
 
         Vector3f camN = cam.getN();
         float flatX = camN.x;
         float flatZ = camN.z;
-        if (Math.abs(flatX) > 0.0001f || Math.abs(flatZ) > 0.0001f)
+        if (java.lang.Math.abs(flatX) > 0.0001f || java.lang.Math.abs(flatZ) > 0.0001f)
         {
-            float yaw = (float)Math.atan2(flatX, flatZ);
+            float yaw = (float)java.lang.Math.atan2(flatX, flatZ);
             player.setLocalRotation(new Matrix4f().rotationY(yaw));
         }
+        networkUpdateTimer += dt;
 
-	Vector3f playerpos = player.getWorldLocation();
+        if (networkUpdateTimer >= NETWORK_UPDATE_INTERVAL)
+        {
+            networkUpdateTimer = 0.0f;
 
-	pickupManager.handleCollisions(dt, player, weaponInventory, gameAudio);
+            if (protClient != null && player != null)
+                protClient.sendMoveMessage(player.getWorldLocation());
+        }
 
-	float vx = 0.0f;
-	float vz = 0.0f;
+        enemyNetworkUpdateTimer += dt;
 
-	if (playerP != null)
-	{
-		float[] vel = playerP.getLinearVelocity();
-		vx = vel[0];
-		vz = vel[2];
-	}
+        if (enemyNetworkUpdateTimer >= ENEMY_NETWORK_UPDATE_INTERVAL)
+        {
+            enemyNetworkUpdateTimer = 0.0f;
+            sendApeNetworkUpdates();
+            sendSkinnyNetworkUpdates();
+            sendBrainNetworkUpdates();
+        }
 
-	float horizontalSpeed = (float)Math.sqrt(vx * vx + vz * vz);
-	isMoving = horizontalSpeed > 0.05f;
+        Vector3f playerpos = player.getWorldLocation();
 
-	if (playerS != null)
-	{
-		if (isMoving && !wasMoving)
-			playerS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
-		else if (!isMoving && wasMoving)
-			playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
-	}
+        pickupManager.handleCollisions(dt, player, weaponInventory, gameAudio);
 
-	wasMoving = isMoving;
-	prevPlayerPos.set(playerpos);
+        float vx = 0.0f;
+        float vz = 0.0f;
+
+        if (playerP != null)
+        {
+            float[] vel = playerP.getLinearVelocity();
+            vx = vel[0];
+            vz = vel[2];
+        }
+
+        float horizontalSpeed = (float)java.lang.Math.sqrt(vx * vx + vz * vz);
+        isMoving = horizontalSpeed > 0.05f;
+
+        if (playerS != null)
+        {
+            if (isMoving && !wasMoving)
+                playerS.playAnimation("RUN", 0.3f, AnimatedShape.EndType.LOOP, 0);
+            else if (!isMoving && wasMoving)
+                playerS.playAnimation("STAND", 0.5f, AnimatedShape.EndType.LOOP, 0);
+        }
+
+        wasMoving = isMoving;
+        prevPlayerPos.set(playerpos);
 
         overheadCameraController.applyTo(camOver, playerpos);
 
-        if (gameState == GameState.BETWEEN_WAVES)
+        if (playerDeathScreenActive)
         {
-            shopState.renderBetweenWaveHud(engine, pHealth, playerCredits);
+            showDeathContinueHud();
+            return;
+        }
+
+        engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
+
+        /*
+        // Old bottom debug HUD. Re-enable this if you need player position / tractor beam status again.
+        String hud3Text = String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z);
+
+        if (physicsDebug || tractorBeamActive)
+            hud3Text += " | " + getTractorBeamDebugText(playerpos);
+        */
+
+        engine.getHUDmanager().setHUD3(
+            getObjectiveHudText(),
+            new Vector3f(1, 1, 1), 15, 15
+        );
+        if (brainActive && brainHealth > 0)
+        {
+            engine.getHUDmanager().setHUD4(
+                getBrainHealthBar(),
+                new Vector3f(1, 0, 0),
+                440,
+                650
+            );
         }
         else
         {
-            engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
-            engine.getHUDmanager().setHUD2(weaponInventory.getHudText(), new Vector3f(1, 1, 1), 15, 630);
-            engine.getHUDmanager().setHUD3(
-                String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z),
-                new Vector3f(1, 1, 1), 15, 15
-            );
+            engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
         }
 
         pickupManager.update(dt, terr);
@@ -1476,6 +2811,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     @Override
     public void keyPressed(KeyEvent e)
     {
+        if (playerDeathScreenActive)
+        {
+            if (e.getKeyCode() == KeyEvent.VK_ENTER)
+                continueAfterPlayerDeath();
+
+            return;
+        }
+
         if (gameState == GameState.MENU)
         {
             switch (e.getKeyCode())
@@ -1505,72 +2848,85 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     }
                     break;
                 case KeyEvent.VK_ENTER:
-                    switch (menu.activateSelection())
-                    {
-                        case START_GAME:
-                            setMapSelection(menu.getSelectedMapIndex());
-                            applyMapSelection();
-                            gameState = GameState.PLAYING;
-                            engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
-                            engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
-                            engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
-                            ufoWaveManager.startNextWave();
-                            break;
-                        case SELECT_MAP:
-                            menu.nextMap();
-                            setMapSelection(menu.getSelectedMapIndex());
-                            applyMapSelection();
-                            break;
-                        case MULTIPLAYER:
-                        case OPTIONS:
-                            break;
-                        case QUIT:
-                            isShuttingDown = true;
-                            mouseModeInitiated = false;
-                            isRecentering = false;
-                            gameAudio.releaseAll();
-                            shutdown();
-                            System.exit(0);
-                            return;
-                        default:
-                            System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
-                            break;
-                    }
+                    activateCurrentMenuSelection();
                     break;
                 default:
                     break;
             }
+
+            super.keyPressed(e);
+            return;
         }
 
-        if (gameState == GameState.PLAYING || gameState == GameState.BETWEEN_WAVES)
+        if (gameState == GameState.ROBOT_SELECT)
+        {
+            switch (e.getKeyCode())
+            {
+                case KeyEvent.VK_A:
+                case KeyEvent.VK_LEFT:
+                    previousAvatarSelection();
+                    break;
+
+                case KeyEvent.VK_D:
+                case KeyEvent.VK_RIGHT:
+                    nextAvatarSelection();
+                    break;
+
+                case KeyEvent.VK_ENTER:
+                    startSelectedGame();
+                    break;
+
+                case KeyEvent.VK_ESCAPE:
+                    gameState = GameState.MENU;
+                    break;
+
+                default:
+                    break;
+            }
+
+            super.keyPressed(e);
+            return;
+        }
+
+        if (gameState == GameState.PLAYING)
         {
             switch (e.getKeyCode())
             {
                 case KeyEvent.VK_ESCAPE:
                     gameState = GameState.PAUSED;
+                    engine.getHUDmanager().setHUD1("PAUSED", new Vector3f(1, 1, 1), 600, 360);
                     break;
                 case KeyEvent.VK_R:
                     weaponInventory.beginReload();
+                    break;
+                case KeyEvent.VK_E:
+                    startPlayerGrapple();
                     break;
                 case KeyEvent.VK_BACK_SLASH:
                     restartGame = new RestartGame(this);
                     restartGame.performAction(0, null);
                     break;
-                case KeyEvent.VK_E:
-                    gameState = shopState.handleWorldKey(e.getKeyCode(), gameState, player, playerP, currentMoveDir);
+                // DEBUG KEYS
+                case KeyEvent.VK_T:
+                    if (isHostClient)
+                    {
+                        pendingDebugFinalUfoBeam = true;
+                        System.out.println("DEBUG: queued final UFO beam test");
+                    }
+                    else
+                    {
+                        System.out.println("DEBUG: T ignored on non-host; press T on host");
+                    }
+                    break;
+                case KeyEvent.VK_Y:
+                    spawnDebugSkinnyLoadout();
+                    break;
+                case KeyEvent.VK_U:
+                    debugStartLevelTwoArrivalEvent();
                     break;
                 default:
                     break;
             }
-        }
-        else if (gameState == GameState.SHOP)
-        {
-            gameState = shopState.handleShopKey(e.getKeyCode(), gameState, this, weaponInventory);
-        }
-        else if (gameState == GameState.PAUSED)
-        {
-            if (e.getKeyCode() == KeyEvent.VK_ESCAPE)
-                gameState = shopState.getResumeState();
         }
 
         super.keyPressed(e);
@@ -1578,6 +2934,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     @Override
     public void mouseMoved(MouseEvent e)
+    {
+        handleMouseLook(e);
+    }
+
+    @Override
+    public void mouseDragged(MouseEvent e)
     {
         handleMouseLook(e);
     }
@@ -1625,46 +2987,18 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (gameState != GameState.PLAYING) return;
         if (e.getButton() != MouseEvent.BUTTON1) return;
 
-        if (!weaponInventory.currentUsesBullets()) return;
-        if (weaponInventory.isReloading()) return;
-        if (weaponInventory.getCurrentWeapon() == WeaponType.SHOTGUN && isShotgunPumping()) return;
+        recenterMouse();
+        prevMouseX = centerX;
+        prevMouseY = centerY;
 
-        if (weaponInventory.getCurrentMagazineAmmo() <= 0)
-        {
-            weaponInventory.beginReload();
-            return;
-        }
-
-        if (weaponInventory.isAutomaticWeapon())
-        {
-            isFiring = true;
-            if (!weaponInventory.isCoolingDown())
-                fireCurrentWeapon();
-        }
-        else
-        {
-            if (!weaponInventory.isCoolingDown())
-                fireCurrentWeapon();
-        }
+        beginFireInput();
     }
 
     @Override
     public void mouseReleased(MouseEvent e)
     {
         if (e.getButton() == MouseEvent.BUTTON1)
-        {
-            isFiring = false;
-            gameAudio.stopRifleLoopSound();
-        }
-    }
-
-    @Override public void mouseClicked(MouseEvent e) {}
-    @Override public void mouseEntered(MouseEvent e) {}
-    @Override public void mouseExited(MouseEvent e) {}
-    @Override
-    public void mouseDragged(MouseEvent e)
-    {
-        handleMouseLook(e);
+            endFireInput();
     }
 
     void toggleFirstPersonMode()
@@ -1720,6 +3054,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public void movePlayerPhysics(Vector3f moveDir, float speed)
     {
+        if (playerDeathScreenActive) return;
+        if (gameState != GameState.PLAYING) return;
         if (playerP == null) return;
 
         Vector3f dir = new Vector3f(moveDir.x, 0f, moveDir.z);
@@ -1756,6 +3092,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             case PISTOL:
                 bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, forward, false);
+
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playPistolShot();
                 break;
@@ -1763,24 +3103,27 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             case PLASMA_RIFLE:
                 if (weaponInventory.isPlasmaBurstMode())
                 {
-                    int burstCount = Math.min(3, weaponInventory.getCurrentMagazineAmmo());
-                    for (int i = 0; i < burstCount; i++)
-                    {
-                    bulletManager.spawnPlayerBullet(spawnPos, forward, true);
-                        weaponInventory.consumeCurrentRound();
-                    }
+                    plasmaBurstShotsRemaining = Math.min(3, weaponInventory.getCurrentMagazineAmmo());
+                    plasmaBurstTimer = 0.0f;
                 }
                 else
                 {
                 bulletManager.spawnPlayerBullet(spawnPos, forward, true);
-                    weaponInventory.consumeCurrentRound();
-                }
 
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, forward, true);
+
+                weaponInventory.consumeCurrentRound();
                 gameAudio.playPlasmaRifle();
+                }
                 break;
 
             case RIFLE:
                 bulletManager.spawnPlayerBullet(spawnPos, forward, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, forward, false);
+
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playRifleLoopSound();
                 break;
@@ -1789,12 +3132,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 for (int i = 0; i < shotgunPelletCount; i++)
                 {
                     Vector3f spreadDir = new Vector3f(forward).add(
-                        (random.nextFloat() - 0.5f) * shotgunSpread,
-                        (random.nextFloat() - 0.5f) * shotgunSpread,
-                        (random.nextFloat() - 0.5f) * shotgunSpread
+                        ((float)Math.random() - 0.5f) * shotgunSpread,
+                        ((float)Math.random() - 0.5f) * shotgunSpread,
+                        ((float)Math.random() - 0.5f) * shotgunSpread
                     ).normalize();
 
                 bulletManager.spawnPlayerBullet(spawnPos, spreadDir, false);
+
+                if (protClient != null)
+                    protClient.sendPlayerBullet(spawnPos, spreadDir, false);
                 }
                 weaponInventory.consumeCurrentRound();
 
@@ -1816,6 +3162,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public boolean checkAndDamageApe(Vector3f loc)
     {
+        return checkAndDamageApe(loc, null);
+    }
+
+    public boolean checkAndDamageApe(Vector3f loc, UUID shooterID)
+    {
         for (int j = activeApes.size() - 1; j >= 0; j--)
         {
             GameObject ape = activeApes.get(j);
@@ -1833,18 +3184,135 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                         activeApeDead.set(j, true);
                         activeApeDeathTimers.set(j, 2.0f);
 
+                        ape.setLocalRotation(new Matrix4f().rotationZ((float)Math.toRadians(90.0f)));
+
+                        GameObject apeGun = activeApeGuns.get(j);
+                        if (apeGun != null)
+                            apeGun.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                        gameAudio.playApeDie(ape.getWorldLocation());
+
                         PhysicsObject apeP = activeApePhysics.get(j);
                         if (apeP != null)
                         {
                             apeP.setAngularFactor(1f);
                             apeP.applyTorque(0.0f, 0.0f, 35.0f);
                         }
-                        addPlayerCredits(new Random().nextInt(10)); // Reward for kill
+
+                        int creditAmount = 25 + new java.util.Random().nextInt(26);
+
+                        if (shooterID == null)
+                        {
+                            addPlayerCredits(creditAmount);
+                        }
+                        else if (protClient != null && isHostClient)
+                        {
+                            protClient.sendCreditAward(shooterID, creditAmount);
+                        }
                     }
                     return true;
                 }
             }
         }
+        return false;
+    }
+
+    public boolean checkAndDamageSkinny(Vector3f loc)
+    {
+        return checkAndDamageSkinny(loc, null);
+    }
+
+    public boolean checkAndDamageSkinny(Vector3f loc, UUID shooterID)
+    {
+        for (int i = activeSkinnys.size() - 1; i >= 0; i--)
+        {
+            if (activeSkinnyDead.get(i)) continue;
+
+            GameObject s = activeSkinnys.get(i);
+
+            if (loc.distance(s.getWorldLocation()) < 1.0f)
+            {
+                int hp = activeSkinnyHealth.get(i) - 100;
+                activeSkinnyHealth.set(i, hp);
+
+                if (hp <= 0)
+                {
+                    activeSkinnyDead.set(i, true);
+                    skinnyKillCount++;
+
+                    gameAudio.playAlienDie(s.getWorldLocation());
+
+                    int creditAmount = 25 + new java.util.Random().nextInt(26);
+
+                    if (shooterID == null)
+                    {
+                        addPlayerCredits(creditAmount);
+                    }
+                    else if (protClient != null && isHostClient)
+                    {
+                        protClient.sendCreditAward(shooterID, creditAmount);
+                    }
+
+                    if (skinnyKillCount % 10 == 0)
+                    {
+                        dropGrapplePickup(s.getWorldLocation());
+                    }
+
+                    s.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    GameObject plasma = activeSkinnyPlasma.get(i);
+                    GameObject grapple = activeSkinnyGrapple.get(i);
+
+                    if (plasma != null)
+                        plasma.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    if (grapple != null)
+                        grapple.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+                    /*
+                    // Alien grapple lines are disabled, so there is no line visual to hide here.
+                    if (i < activeSkinnyGrappleLines.size())
+                    {
+                        GameObject line = activeSkinnyGrappleLines.get(i);
+                        if (line != null)
+                            line.setLocalScale(new Matrix4f().scaling(0.0001f));
+                    }
+                    */
+
+                    PhysicsObject p = activeSkinnyPhysics.get(i);
+                    if (p != null)
+                        physicsEngine.removeObject(p.getUID());
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean checkAndDamageBrain(Vector3f loc)
+    {
+        if (!isHostClient)
+            return false;
+
+        if (!brainActive || brain == null || brainHealth <= 0)
+            return false;
+
+        if (loc.distance(brain.getWorldLocation()) < 2.0f)
+        {
+            brainHealth -= 20;
+
+            if (brainHealth <= 0)
+            {
+                brainHealth = 0;
+                brainActive = false;
+                brainDefeated = true;
+                brain.setLocalScale(new Matrix4f().scaling(0.0001f));
+                System.out.println("Brain defeated!");
+            }
+
+            return true;
+        }
+
         return false;
     }
 
@@ -1861,12 +3329,413 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             Matrix4f locMat = new Matrix4f().translation(loc.x, loc.y - 1.1f, loc.z);
             apeObj.setLocalTranslation(locMat);
 
-            apeObj.getRenderStates().setModelOrientationCorrection(
+            if (!activeApeDead.get(i))
+            {
+                apeObj.getRenderStates().setModelOrientationCorrection(
+                    new Matrix4f()
+                        .rotationX((float)Math.toRadians(90.0f))
+                        .rotateZ((float)Math.toRadians(180.0f))
+                );
+            }
+            else
+            {
+                apeObj.getRenderStates().setModelOrientationCorrection(
+                    new Matrix4f()
+                        .rotationX((float)Math.toRadians(90.0f))
+                        .rotateZ((float)Math.toRadians(270.0f))
+                );
+            }
+        }
+    }
+
+    private void updateSkinnysFromPhysics()
+    {
+        for (int i = 0; i < activeSkinnys.size(); i++)
+        {
+            if (activeSkinnyDead.get(i)) continue;
+
+            GameObject skinnyObj = activeSkinnys.get(i);
+            PhysicsObject skinnyPhys = activeSkinnyPhysics.get(i);
+
+            if (skinnyObj == null || skinnyPhys == null) continue;
+
+            Vector3f loc = skinnyPhys.getLocation();
+
+            skinnyObj.setLocalTranslation(
+                new Matrix4f().translation(loc.x, loc.y - 1.0f, loc.z)
+            );
+
+            Vector3f playerPos = player.getWorldLocation();
+            Vector3f toPlayer = new Vector3f(playerPos).sub(loc);
+
+            if (toPlayer.lengthSquared() > 0.001f)
+            {
+                float yaw = (float)java.lang.Math.atan2(toPlayer.x, toPlayer.z);
+                skinnyObj.setLocalRotation(new Matrix4f().rotationY(yaw));
+            }
+        }
+    }
+
+    private void dropGrapplePickup(Vector3f pos)
+    {
+        showGrapplePickup(pos);
+
+        if (protClient != null && isHostClient)
+            protClient.sendGrappleDrop(pos);
+
+        System.out.println("Grapple pickup dropped");
+    }
+
+    private void checkGrapplePickup()
+    {
+        if (!grapplePickupActive || grapplePickup == null || player == null) return;
+
+        if (player.getWorldLocation().distance(grapplePickup.getWorldLocation()) < 2.0f)
+        {
+            playerHasGrapple = true;
+            hideGrapplePickup();
+
+            if (protClient != null)
+                protClient.sendGrappleTaken();
+
+            System.out.println("Player picked up grapple");
+        }
+    }
+
+    private void showGrapplePickup(Vector3f pos)
+    {
+        if (grapplePickup == null) return;
+
+        grapplePickup.setLocalTranslation(
+            new Matrix4f().translation(pos.x, pos.y + 1.0f, pos.z)
+        );
+
+        grapplePickup.setLocalScale(new Matrix4f().scaling(0.08f));
+        grapplePickupActive = true;
+    }
+
+    private void hideGrapplePickup()
+    {
+        grapplePickupActive = false;
+
+        if (grapplePickup != null)
+        {
+            grapplePickup.setLocalScale(new Matrix4f().scaling(0.0001f));
+            grapplePickup.setLocalTranslation(new Matrix4f().translation(0.0f, -10000.0f, 0.0f));
+        }
+    }
+
+    private void startPlayerGrapple()
+    {
+        if (!playerHasGrapple || playerGrappling || cam == null || playerP == null) return;
+
+        grappleDir.set(cam.getN()).normalize();
+
+        playerGrappling = true;
+        grappleTimer = grappleDuration;
+
+        System.out.println("Player grapple fired");
+        if (playerGrappleLine != null)
+        {
+            Vector3f start = new Vector3f(player.getWorldLocation()).add(0.0f, 1.5f, 0.0f);
+            Vector3f end = new Vector3f(start).add(new Vector3f(grappleDir).mul(60.0f));
+            Vector3f mid = new Vector3f(start).add(end).mul(0.5f);
+
+            playerGrappleLine.setLocalTranslation(new Matrix4f().translation(mid));
+
+            playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.05f, 30.0f, 0.05f));
+
+            float yaw = (float)java.lang.Math.atan2(grappleDir.x, grappleDir.z);
+            float pitch = (float)java.lang.Math.asin(grappleDir.y);
+
+            playerGrappleLine.setLocalRotation(
                 new Matrix4f()
-                    .rotationX((float)Math.toRadians(90.0f))
-                    .rotateZ((float)Math.toRadians(180.0f))
+                    .rotationY(yaw)
+                    .rotateX((float)java.lang.Math.toRadians(90.0f) - pitch)
             );
         }
+    }
+
+    private void updatePlayerGrapple(float dt)
+    {
+        if (!playerGrappling || playerP == null) return;
+
+        grappleTimer -= dt;
+
+        playerP.setLinearVelocity(new float[] {
+            grappleDir.x * grappleSpeed,
+            grappleDir.y * grappleSpeed,
+            grappleDir.z * grappleSpeed
+        });
+
+        if (grappleTimer <= 0.0f)
+        {
+            playerGrappling = false;
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+            if (playerGrappleLine != null)
+                playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+        }
+    }
+
+    private void scheduleLevelTwoArrivalEvent()
+    {
+        levelTwoArrivalEventPending = true;
+        levelTwoArrivalTimer = levelTwoArrivalDelay;
+        levelTwoThrowControlTimer = 0.0f;
+
+        System.out.println("Level two arrival event scheduled: roar/throwback in 1 second");
+    }
+
+    private void updateLevelTwoArrivalEvent(float dt)
+    {
+        if (levelTwoThrowControlTimer > 0.0f)
+        {
+            levelTwoThrowControlTimer -= dt;
+
+            if (levelTwoThrowControlTimer < 0.0f)
+                levelTwoThrowControlTimer = 0.0f;
+        }
+
+        if (!levelTwoArrivalEventPending)
+            return;
+
+        levelTwoArrivalTimer -= dt;
+
+        if (levelTwoArrivalTimer <= 0.0f)
+            triggerLevelTwoArrivalEvent();
+    }
+    
+    private void updateLevelTwoMusic(float dt)
+    {
+        if (!levelTwoMusicPending)
+            return;
+
+        levelTwoMusicTimer -= dt;
+
+        if (levelTwoMusicTimer <= 0.0f)
+        {
+            levelTwoMusicPending = false;
+
+            if (!bossMusicStarted)
+                gameAudio.playLevel2Music();
+        }
+    }
+
+    private void triggerLevelTwoArrivalEvent()
+    {
+        levelTwoArrivalEventPending = false;
+
+        gameAudio.playRoar();
+        throwPlayerBackFromLevelTwoSpawn();
+        playerKnockedOffLevelTwo = true;
+
+        System.out.println("Level two arrival event fired: TAGE roar + throwback");
+    }
+
+    private void throwPlayerBackFromLevelTwoSpawn()
+    {
+        if (playerP == null)
+            return;
+
+        Vector3f throwDir = new Vector3f(levelTwoThrowDir);
+
+        if (throwDir.lengthSquared() < 0.0001f)
+            throwDir.set(0.0f, 0.0f, 1.0f);
+        else
+            throwDir.normalize();
+
+        playerP.setLinearVelocity(new float[] {
+            throwDir.x * levelTwoThrowBackSpeed,
+            levelTwoThrowUpSpeed,
+            throwDir.z * levelTwoThrowBackSpeed
+        });
+
+        levelTwoThrowControlTimer = levelTwoThrowControlDuration;
+    }
+
+    private void startTractorBeam()
+    {
+        if (tractorBeamActive) return;
+
+        tractorBeamActive = true;
+        playerInTractorBeam = false;
+
+        Vector3f ufoPos = ufoWaveManager.getLargeUfoPosition();
+
+        if (protClient != null && isHostClient)
+            protClient.sendTractorBeamStart(ufoPos);
+
+        tractorBeamTopY = ufoPos.y;
+
+        tractorBeamCenter.set(
+            ufoPos.x,
+            ufoPos.y - (tractorBeamHeight * 0.5f),
+            ufoPos.z
+        );
+
+        if (tractorBeamLight != null)
+        {
+            tractorBeamLight.setLocation(new Vector3f(ufoPos.x, ufoPos.y - 1.0f, ufoPos.z));
+            tractorBeamLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+            tractorBeamLight.enable();
+        }
+
+        System.out.println("Tractor beam active from large UFO (gameplay trigger, no physics collider)");
+    }
+
+    private void updateTractorBeam(float dt)
+    {
+        if (!tractorBeamActive || player == null || playerP == null)
+            return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        float dx = playerPos.x - tractorBeamCenter.x;
+        float dz = playerPos.z - tractorBeamCenter.z;
+        float horizontalDist = (float)Math.sqrt(dx * dx + dz * dz);
+
+        // Pure gameplay trigger: no cylinder/collider.
+        // The player is considered captured if their X/Z position is under the large UFO
+        // after the final wave has enabled the beam.
+        boolean underLargeUfo = horizontalDist <= tractorBeamRadius;
+        boolean belowUfo = playerPos.y <= tractorBeamTopY;
+
+        if (underLargeUfo && belowUfo)
+        {
+            playerInTractorBeam = true;
+
+            // Center the lift so the player cannot fight the beam with movement input.
+            playerP.setLinearVelocity(new float[] {
+                0.0f,
+                tractorBeamLiftSpeed,
+                0.0f
+            });
+
+            if (playerPos.y >= tractorBeamTopY - 1.0f)
+                swapToCaseOneTerrain();
+        }
+        else
+        {
+            playerInTractorBeam = false;
+        }
+    }
+
+    private void handlePlayerDeath()
+    {
+        if (playerDeathScreenActive)
+            return;
+
+        playerDeathScreenActive = true;
+        gameState = GameState.PAUSED;
+        physicsDebug = true;
+        engine.enablePhysicsWorldRender();
+        isFiring = false;
+        plasmaBurstShotsRemaining = 0;
+        playerGrappling = false;
+        currentMoveDir.set(0.0f, 0.0f, 0.0f);
+
+        gameAudio.stopRifleLoopSound();
+
+        if (playerP != null)
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        if (playerGrappleLine != null)
+            playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        Vector3f deathPos = player != null ? player.getWorldLocation() : new Vector3f(0.0f, 0.0f, 0.0f);
+        gameAudio.playPlayerDie(deathPos);
+
+        showDeathContinueHud();
+    }
+
+    private void showDeathContinueHud()
+    {
+        engine.getHUDmanager().setHUD1(
+            "CONTINUE",
+            new Vector3f(1.0f, 1.0f, 1.0f),
+            520,
+            400
+        );
+
+        engine.getHUDmanager().setHUD2(
+            "<press ENTER>",
+            new Vector3f(0.95f, 0.95f, 0.95f),
+            500,
+            350
+        );
+
+        engine.getHUDmanager().setHUD3("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+    }
+
+    private void continueAfterPlayerDeath()
+    {
+        playerDeathScreenActive = false;
+        pHealth = 100;
+        gameState = GameState.PLAYING;
+        physicsDebug = false;
+        engine.disablePhysicsWorldRender();
+        isFiring = false;
+        plasmaBurstShotsRemaining = 0;
+        playerGrappling = false;
+        currentMoveDir.set(0.0f, 0.0f, 0.0f);
+
+        if (playerP != null)
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        if (playerGrappleLine != null)
+            playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        engine.getHUDmanager().setHUD1("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD2("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD3("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+
+        System.out.println("Player continued after death");
+    }
+
+    private String getObjectiveHudText()
+    {
+        if (brainDefeated)
+            return "YOU WIN!";
+
+        if (brainActive && brainHealth > 0)
+            return "Finish off the brain!";
+
+        if (mapSelection == 1)
+        {
+            if (playerHasGrapple)
+                return "One of those weird aliens dropped this grapple gun, press E to grapple! Get back up there!";
+
+            if (playerKnockedOffLevelTwo)
+                return "There's got to be a way to get back up there!";
+
+            return "They left the tractor beam active, get in there and destroy the brain!";
+        }
+
+        if (tractorBeamActive)
+            return "They left the tractor beam active, get in there and destroy the brain!";
+
+        return "Defend Earth from the robot monkeys!";
+    }
+
+    private String getTractorBeamDebugText(Vector3f playerPos)
+    {
+        if (!tractorBeamActive)
+            return "Beam: OFF";
+
+        float dx = playerPos.x - tractorBeamCenter.x;
+        float dz = playerPos.z - tractorBeamCenter.z;
+        float horizontalDist = (float)Math.sqrt(dx * dx + dz * dz);
+
+        return String.format(
+            "Beam: ACTIVE | Under UFO: %s | Dist: %.2f/%.2f | TopY: %.2f",
+            playerInTractorBeam ? "YES" : "NO",
+            horizontalDist,
+            tractorBeamRadius,
+            tractorBeamTopY
+        );
     }
 
     private void applyMapSelection()
@@ -1878,7 +3747,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             case 0:
                 terr.setTextureImage(terrTxMap0);
                 terr.setHeightMap(heightMap0);
-                (engine.getSceneGraph()).setActiveSkyBoxTexture(fluffySkyBox);
+                (engine.getSceneGraph()).setActiveSkyBoxTexture(islandSkyBox);
                 terr.getRenderStates().setTileFactor(10);
                 break;
             case 1:
@@ -1886,6 +3755,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 terr.setHeightMap(heightMap1);
                 (engine.getSceneGraph()).setActiveSkyBoxTexture(spaceSkyBox);
                 terr.getRenderStates().setTileFactor(100);
+                hideMapZeroBuildings();
                 break;
             default:
                 terr.setTextureImage(terrTxMap0);
@@ -1893,43 +3763,299 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 terr.getRenderStates().setTileFactor(10);
                 break;
         }
-
-        if (physicsEngine != null)
-            terrainPhysicsRefreshPending = true;
     }
 
-    private void rebuildTerrainPhysicsObject()
+    private void switchTerrainPhysics()
     {
-        if (physicsEngine == null || terr == null) return;
+        if (terrainP0 == null || terrainP1 == null) return;
 
-        if (terrainP != null)
+        if (mapSelection == 0)
         {
-            engine.getSceneGraph().removePhysicsObject(terrainP);
-            terrainP = null;
+            terrainP0.setLocation(new float[] { 0.0f, 0.0f, 0.0f });
+            terrainP1.setLocation(new float[] { 0.0f, -10000.0f, 0.0f });
+            terrainP = terrainP0;
+        }
+        else
+        {
+            terrainP0.setLocation(new float[] { 0.0f, -10000.0f, 0.0f });
+            terrainP1.setLocation(new float[] { 0.0f, 0.0f, 0.0f });
+            terrainP = terrainP1;
         }
 
-        Vector3f loc = terr.getWorldLocation();
-        Quaternionf rot = new Quaternionf();
-        terr.getWorldRotation().getNormalizedRotation(rot);
-
-        TextureImage activeHeightMap = (mapSelection == 1) ? heightMap1 : heightMap0;
-
-        terrainP = engine.getSceneGraph().addPhysicsStaticTerrainMesh(
-            loc, rot, activeHeightMap, 100.0f, 50.0f, 100
-        );
-        terrainP.setBounciness(0.0f);
-        terrainP.setFriction(1.0f);
-        terrainP.disableSleeping();
         terr.setPhysicsObject(terrainP);
     }
 
-    private void refreshTerrainPhysicsIfNeeded()
+    private void hideMapZeroBuildings()
     {
-        if (!terrainPhysicsRefreshPending) return;
+        if (centerBuilding != null)
+            centerBuilding.setLocalScale(new Matrix4f().scaling(0.0001f));
 
-        terrainPhysicsRefreshPending = false;
-        rebuildTerrainPhysicsObject();
-        placePlayerAtTerrainStart();
+        for (GameObject b : smallBuildings)
+            if (b != null) b.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        for (GameObject b : smallBuildings2)
+            if (b != null) b.setLocalScale(new Matrix4f().scaling(0.0001f));
+
+        for (PhysicsObject p : buildingPhysics)
+            if (p != null && physicsEngine != null)
+                physicsEngine.removeObject(p.getUID());
+
+        buildingPhysics.clear();
+    }
+
+    private void hideLevelZeroUfos()
+    {
+        if (ufoWaveManager != null)
+            ufoWaveManager.hideAllUfos();
+    }
+
+    private void swapToCaseOneTerrain()
+    {
+        tractorBeamActive = false;
+        playerInTractorBeam = false;
+
+        if (tractorBeamLight != null)
+            tractorBeamLight.disable();
+
+        hideMapZeroBuildings();
+        hideLevelZeroUfos();
+
+        mapSelection = 1;
+        applyMapSelection();
+        switchTerrainPhysics();
+        pendingSkinnySpawn = true;
+
+        setupCaseOneStart();
+
+        System.out.println("Swapped to case 1 terrain");
+    }
+
+    private void sendApeNetworkUpdates()
+    {
+        if (!isHostClient || protClient == null)
+            return;
+
+        for (int i = 0; i < activeApes.size(); i++)
+        {
+            GameObject apeObj = activeApes.get(i);
+
+            if (apeObj == null)
+                continue;
+
+            int enemyID = activeApeNetworkIds.get(i);
+            Vector3f pos = apeObj.getWorldLocation();
+
+            float yaw = 0.0f;
+
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+            if (targetPos != null)
+            {
+                Vector3f toTarget = new Vector3f(targetPos).sub(pos);
+
+                if (toTarget.lengthSquared() > 0.001f)
+                    yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+            }
+
+            int health = activeApeHealth.get(i);
+            boolean dead = activeApeDead.get(i);
+
+            protClient.sendEnemyUpdate(enemyID, "APE", pos, yaw, health, dead);
+        }
+    }
+
+    private void sendSkinnyNetworkUpdates()
+    {
+        if (!isHostClient || protClient == null)
+            return;
+
+        for (int i = 0; i < activeSkinnys.size(); i++)
+        {
+            GameObject skinnyObj = activeSkinnys.get(i);
+
+            if (skinnyObj == null)
+                continue;
+
+            int enemyID = activeSkinnyNetworkIds.get(i);
+            Vector3f pos = skinnyObj.getWorldLocation();
+
+            float yaw = 0.0f;
+
+            Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+            if (targetPos != null)
+            {
+                Vector3f toTarget = new Vector3f(targetPos).sub(pos);
+
+                if (toTarget.lengthSquared() > 0.001f)
+                    yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+            }
+
+            int health = activeSkinnyHealth.get(i);
+            boolean dead = activeSkinnyDead.get(i);
+
+            protClient.sendEnemyUpdate(enemyID, "SKINNY", pos, yaw, health, dead);
+        }
+    }
+
+    private void sendBrainNetworkUpdates()
+    {
+        if (!isHostClient || protClient == null || brain == null || mapSelection != 1)
+            return;
+
+        if (!brainActive && !brainDefeated)
+            return;
+
+        Vector3f pos = brain.getWorldLocation();
+
+        float yaw = 0.0f;
+
+        Vector3f targetPos = getClosestPlayerOrGhostTarget(pos);
+
+        if (targetPos != null)
+        {
+            Vector3f toTarget = new Vector3f(targetPos).sub(pos);
+
+            if (toTarget.lengthSquared() > 0.001f)
+                yaw = (float)java.lang.Math.atan2(toTarget.x, toTarget.z);
+        }
+
+        boolean dead = brainDefeated || brainHealth <= 0;
+
+        protClient.sendEnemyUpdate(
+            NETWORK_BRAIN_ID,
+            "BRAIN",
+            pos,
+            yaw,
+            brainHealth,
+            dead
+        );
+    }
+
+    public void receiveNetworkEnemyUpdate(int enemyID, String enemyType, Vector3f pos, float yaw, int health, boolean dead)
+    {
+        if (isHostClient)
+            return;
+
+        if (enemyType.equals("BRAIN"))
+        {
+            receiveNetworkBrainUpdate(pos, yaw, health, dead);
+            return;
+        }
+
+        if (networkEnemyManager != null)
+            networkEnemyManager.updateEnemy(enemyID, enemyType, pos, yaw, health, dead);
+    }
+
+    public void receiveNetworkEnemyRemove(int enemyID, String enemyType)
+    {
+        if (isHostClient)
+            return;
+
+        if (networkEnemyManager != null)
+            networkEnemyManager.removeEnemy(enemyID);
+    }
+
+    public void receiveNetworkEnemyBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        if (isHostClient)
+            return;
+
+        spawnEnemyBullet(pos, dir, isPlasma);
+        gameAudio.playNpcPlasma(pos);
+    }
+
+    public void receiveNetworkPlayerBullet(UUID shooterID, Vector3f pos, Vector3f dir, boolean isPlasma)
+    {
+        if (!isHostClient)
+            return;
+
+        bulletManager.spawnNetworkPlayerBullet(shooterID, pos, dir, isPlasma);
+    }
+    
+    public void receiveCreditAward(int amount)
+    {
+        addPlayerCredits(amount);
+    }
+
+    public void receiveNetworkUfoWaveStart(Vector3f pos, int apeCount, int ufoIndex)
+    {
+        if (isHostClient)
+            return;
+
+        if (ufoWaveManager != null)
+            ufoWaveManager.startNetworkWave(pos, apeCount, ufoIndex);
+    }
+
+    public void receiveNetworkTractorBeamStart(Vector3f ufoPos)
+    {
+        if (isHostClient)
+            return;
+
+        tractorBeamActive = true;
+        playerInTractorBeam = false;
+
+        tractorBeamTopY = ufoPos.y;
+
+        tractorBeamCenter.set(
+            ufoPos.x,
+            ufoPos.y - (tractorBeamHeight * 0.5f),
+            ufoPos.z
+        );
+
+        if (tractorBeamLight != null)
+        {
+            tractorBeamLight.setLocation(new Vector3f(ufoPos.x, ufoPos.y - 1.0f, ufoPos.z));
+            tractorBeamLight.setDirection(new Vector3f(0.0f, -1.0f, 0.0f));
+            tractorBeamLight.enable();
+        }
+    }
+
+    public void receiveNetworkGrappleDrop(Vector3f pos)
+    {
+        if (isHostClient)
+            return;
+
+        showGrapplePickup(pos);
+    }
+
+    public void receiveNetworkGrappleTaken()
+    {
+        hideGrapplePickup();
+    }
+
+    private void receiveNetworkBrainUpdate(Vector3f pos, float yaw, int health, boolean dead)
+    {
+        if (brain == null)
+            return;
+
+        brainHealth = health;
+
+        if (dead || health <= 0)
+        {
+            brainHealth = 0;
+            brainActive = false;
+            brainFloating = false;
+            brainDefeated = true;
+            brain.setLocalScale(new Matrix4f().scaling(0.0001f));
+            return;
+        }
+
+        boolean wasInactive = !brainActive;
+
+        brainActive = true;
+        brainFloating = true;
+        brainDefeated = false;
+
+        brain.setLocalTranslation(new Matrix4f().translation(pos));
+        brain.setLocalRotation(new Matrix4f().rotationY(yaw));
+        brain.setLocalScale(new Matrix4f().scaling(0.1f));
+
+        if (brainS != null && wasInactive)
+            brainS.playAnimation("FLOAT", 0.3f, AnimatedShape.EndType.LOOP, 0);
+
+        if (wasInactive)
+            startBossMusic();
     }
 
     // ========================================================
@@ -1954,27 +4080,368 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     }
     public void setPlayerHealth(int value)
     {
-        pHealth = Math.max(pHealthMin, Math.min(value, pHealthMax));
+        int oldHealth = pHealth;
+        pHealth = java.lang.Math.max(pHealthMin, java.lang.Math.min(value, pHealthMax));
+
+        if (oldHealth > 0 && pHealth <= 0)
+            handlePlayerDeath();
     }
     public void addPlayerHealth(int amount) { setPlayerHealth(pHealth + amount); }
     public int getPlayerHealth() { return pHealth; }
     public int getPlayerHealthMax() { return pHealthMax; }
     public int getPlayerAmmo() { return weaponInventory.getTotalAmmo(); }
-    public void addPlayerCredits(int amount) { playerCredits += amount; }
+    public void addPlayerCredits(int amount)
+    {
+        playerCredits += amount;
+    }
+
     public boolean spendPlayerCredits(int amount)
     {
-        if (amount <= 0) return true;
-        if (playerCredits < amount) return false;
+        if (amount <= 0)
+            return true;
+
+        if (playerCredits < amount)
+            return false;
 
         playerCredits -= amount;
         return true;
     }
-    public int getPlayerCredits() { return playerCredits; }
+
+    public int getPlayerCredits()
+    {
+        return playerCredits;
+    }
 
     // --- Networking & Multiplayer ---
     public ProtocolClient getProtocolClient() { return protClient; }
     public void setIsConnected(boolean value) { isClientConnected = value; }
+    public void setIsHostClient(boolean value)
+    {
+        isHostClient = value;
+    }
+
+    public boolean isHostClient()
+    {
+        return isHostClient;
+    }
     public GhostManager getGhostManager() { return gm; }
     public ObjShape getGhostShape() { return ghostS; }
     public TextureImage getGhostTexture() { return ghostT; }
+
+    public ObjShape getApeShape()
+    {
+        return apeS;
+    }
+
+    public TextureImage getApeTexture()
+    {
+        return apeTx;
+    }
+
+    public ObjShape getSkinnyShape()
+    {
+        return skinnyS;
+    }
+
+    public TextureImage getSkinnyTexture()
+    {
+        return skinnyTx;
+    }
+
+    public int getAvatarSelection()
+    {
+        return avatarSelection;
+    }
+
+    public TextureImage getRobotTexture(int selection)
+    {
+        if (selection < 0 || selection >= robotTextures.length)
+            selection = 0;
+
+        if (robotTextures[selection] == null)
+            return playerTx;
+
+        return robotTextures[selection];
+    }
+    public float getPlayerYaw()
+    {
+        if (cam == null)
+            return 0.0f;
+
+        Vector3f camN = cam.getN();
+
+        float flatX = camN.x;
+        float flatZ = camN.z;
+
+        if (java.lang.Math.abs(flatX) < 0.0001f && java.lang.Math.abs(flatZ) < 0.0001f)
+            return 0.0f;
+
+        return (float)java.lang.Math.atan2(flatX, flatZ);
+    }
+    public int getCurrentWeaponIndex()
+    {
+        return weaponInventory.getCurrentWeapon().ordinal();
+    }
+
+    public ObjShape getWeaponShape(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return knifeS;
+            case PISTOL:
+                return pistolS;
+            case PLASMA_RIFLE:
+                return plasmaRifleS;
+            case RIFLE:
+                return rifleS;
+            case SHOTGUN:
+                return shotGunS;
+            default:
+                return pistolS;
+        }
+    }
+
+    public TextureImage getWeaponTexture(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return knifeTx;
+            case PISTOL:
+                return pistolTx;
+            case PLASMA_RIFLE:
+                return plasmaRifleTx;
+            case RIFLE:
+                return rifleTx;
+            case SHOTGUN:
+                return shotGunTx;
+            default:
+                return pistolTx;
+        }
+    }
+
+    public Vector3f getGhostWeaponOffset(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case PISTOL:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case PLASMA_RIFLE:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case RIFLE:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+
+            case SHOTGUN:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y - 0.25f,
+                    weaponPos.z - 0.20f
+                );
+
+            default:
+                return new Vector3f(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                );
+        }
+    }
+
+    public float getGhostWeaponScale(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return knifeWeaponScale;
+
+            case PISTOL:
+                return weaponScale;
+
+            case PLASMA_RIFLE:
+                return weaponScale;
+
+            case RIFLE:
+                return weaponScale;
+
+            case SHOTGUN:
+                return weaponScale + 0.8f;
+
+            default:
+                return weaponScale;
+        }
+    }
+
+    public Matrix4f getGhostWeaponOrientationCorrection(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= WeaponType.COUNT)
+            weaponIndex = 0;
+
+        WeaponType weapon = WeaponType.values()[weaponIndex];
+
+        switch (weapon)
+        {
+            case KNIFE:
+                return new Matrix4f()
+                    .rotateY((float)java.lang.Math.toRadians(-90.0f))
+                    .rotateZ((float)java.lang.Math.toRadians(25.0f));
+
+            case RIFLE:
+                return new Matrix4f()
+                    .rotateX((float)java.lang.Math.toRadians(90.0f));
+
+            case SHOTGUN:
+                return new Matrix4f()
+                    .rotateY((float)java.lang.Math.toRadians(90.0f))
+                    .rotateX((float)java.lang.Math.toRadians(90.0f));
+
+            default:
+                return new Matrix4f();
+        }
+    }
+
+    //-------------------------------
+    //DEBUGGING
+    private void debugStartFinalUfoBeam()
+    {
+        if (terr == null || playerP == null || ufoWaveManager == null)
+        {
+            System.out.println("DEBUG: cannot start UFO beam test yet; missing terrain/player physics/UFO manager");
+            return;
+        }
+
+        mapSelection = 0;
+        applyMapSelection();
+        switchTerrainPhysics();
+
+        // remove any active apes so final condition is clean
+        for (int i = activeApes.size() - 1; i >= 0; i--)
+            removeApe(i);
+
+        // force beam from large UFO
+        ufoWaveManager.debugPlaceLargeUfo();
+        startTractorBeam();
+
+        Vector3f beamPos = tractorBeamCenter;
+        float y = terr.getHeight(beamPos.x, beamPos.z) + playerVisualYOffset + 1.0f;
+
+        playerP.setLocation(new float[] {
+            beamPos.x,
+            y,
+            beamPos.z
+        });
+
+        playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        System.out.println("DEBUG: player moved under gameplay tractor beam");
+    }
+    private void debugStartLevelTwoArrivalEvent()
+    {
+        mapSelection = 1;
+        applyMapSelection();
+        switchTerrainPhysics();
+        hideMapZeroBuildings();
+
+        setupCaseOneStart();
+
+        System.out.println("DEBUG: forced level two arrival event");
+    }
+
+    private void spawnDebugSkinnyLoadout()
+    {
+        if (player == null || skinnyS == null || plasmaRifleS == null || grappleGunS == null)
+            return;
+
+        Vector3f playerPos = player.getWorldLocation();
+
+        Vector3f forward = new Vector3f(cam.getN()).normalize();
+
+        Vector3f spawnPos = new Vector3f(playerPos)
+            .add(new Vector3f(forward).mul(6.0f));
+
+        spawnPos.y = 52.0f;
+
+        debugSkinny = new GameObject(GameObject.root(), skinnyS, skinnyTx);
+        debugSkinny.setLocalTranslation(new Matrix4f().translation(spawnPos));
+        debugSkinny.setLocalScale(new Matrix4f().scaling(0.8f));
+        debugSkinny.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(180.0f)));
+
+        skinnyS.playAnimation("GRAPPLE", 0.3f, AnimatedShape.EndType.LOOP, 0);
+
+        // right hand plasma rifle
+        debugSkinnyPlasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
+        debugSkinnyPlasmaRifle.setParent(debugSkinny);
+        debugSkinnyPlasmaRifle.propagateTranslation(true);
+        debugSkinnyPlasmaRifle.propagateRotation(true);
+        debugSkinnyPlasmaRifle.propagateScale(true);
+        debugSkinnyPlasmaRifle.applyParentRotationToPosition(true);
+
+        debugSkinnyPlasmaRifle.setLocalTranslation(
+            new Matrix4f().translation(-0.3f, 1.25f, 0.75f)
+        );
+        debugSkinnyPlasmaRifle.setLocalScale(new Matrix4f().scaling(weaponScale/75.0f));
+        debugSkinnyPlasmaRifle.setLocalRotation(
+            new Matrix4f().rotationY((float)java.lang.Math.toRadians(0.0f))
+        );
+
+        // left hand grapple gun, pointed upward
+        debugSkinnyGrappleGun = new GameObject(GameObject.root(), grappleGunS, grappleGunTx);
+        debugSkinnyGrappleGun.setParent(debugSkinny);
+        debugSkinnyGrappleGun.propagateTranslation(true);
+        debugSkinnyGrappleGun.propagateRotation(true);
+        debugSkinnyGrappleGun.propagateScale(true);
+        debugSkinnyGrappleGun.applyParentRotationToPosition(true);
+
+        debugSkinnyGrappleGun.setLocalTranslation(
+            new Matrix4f().translation(0.25f, 1.45f, 0.25f)
+        );
+        debugSkinnyGrappleGun.setLocalScale(new Matrix4f().scaling(0.03f));
+        debugSkinnyGrappleGun.setLocalRotation(
+            new Matrix4f()
+                .rotationX((float)java.lang.Math.toRadians(45.0f))
+        );
+
+        System.out.println("DEBUG: spawned skinny weapon fit test");
+    }
 }

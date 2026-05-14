@@ -1,1 +1,1 @@
-javac -Xlint:unchecked bullet/*.java
+javac -Xlint:unchecked bullet\*.java bullet\actions\*.java bullet\audio\*.java bullet\avatars\*.java bullet\camera\*.java bullet\combat\*.java bullet\managers\*.java bullet\network\*.java bullet\rendering\*.java bullet\states\*.java bullet\ui\*.java

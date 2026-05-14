@@ -12,6 +12,7 @@ import tage.physics.PhysicsEngine;
 import tage.physics.PhysicsObject;
 import bullet.MyGame;
 import bullet.combat.Bullet;
+import java.util.UUID;
 
 public class BulletManager {
     private final MyGame game;
@@ -26,8 +27,8 @@ public class BulletManager {
     private final float bulletRadius = 0.02f; 
     private final float plasmaRadius = 0.30f;
     private final float bulletGravityScale = 0.01f;
-    private final float bulletSpeed = 8.00f;
-    private final float plasmaSpeed = 3.00f;
+    private final float bulletSpeed = 60.0f;
+    private final float plasmaSpeed = 35.0f;
     private final float worldGravity = -9.8f;
 
     public BulletManager(MyGame game) {
@@ -45,14 +46,18 @@ public class BulletManager {
     }
 
     public void spawnPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, false);
+        spawnBullet(spawnPos, dir, isPlasma, false, null);
+    }
+
+    public void spawnNetworkPlayerBullet(UUID ownerID, Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
+        spawnBullet(spawnPos, dir, isPlasma, false, ownerID);
     }
 
     public void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, true);
+        spawnBullet(spawnPos, dir, isPlasma, true, null);
     }
 
-    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy) {
+    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy, UUID ownerID) {
         GameObject bulletObj = new GameObject(GameObject.root(), bulletSphereS, isPlasma ? bulletBlueTx : bulletYellowTx);
         float scale = isPlasma ? plasmaRadius : bulletRadius;
         bulletObj.setLocalTranslation(new Matrix4f().translation(spawnPos.x, spawnPos.y, spawnPos.z));
@@ -72,7 +77,7 @@ public class BulletManager {
         bulletP.setLinearVelocity(new float[] { velocity.x, velocity.y, velocity.z });
         bulletObj.setPhysicsObject(bulletP);
 
-        activeBullets.add(new Bullet(bulletObj, bulletP, velocity, bulletLifeMax, isPlasma, fromEnemy));
+        activeBullets.add(new Bullet(bulletObj, bulletP, velocity, bulletLifeMax, isPlasma, fromEnemy, ownerID));
     }
 
     public void update(float dt) {
@@ -96,7 +101,10 @@ public class BulletManager {
                     bulletRemoved = true;
                 }
             } else {
-                if (game.checkAndDamageApe(loc)) bulletRemoved = true;
+                if (game.checkAndDamageApe(loc, b.ownerID) ||
+                    game.checkAndDamageSkinny(loc, b.ownerID) ||
+                    game.checkAndDamageBrain(loc))
+                    bulletRemoved = true;
             }
 
             b.lifetime -= dt;

@@ -8,7 +8,7 @@ public enum WeaponType
     RIFLE("Machine Gun", 30, 120, 30, 60, 0.10f, 1.40f),
     SHOTGUN("Shotgun", 5, 25, 5, 10, 0.55f, 1.80f);
 
-    static final int COUNT = values().length;
+    public static final int COUNT = values().length;
 
     private final String displayName;
     private final int magazineCapacity;

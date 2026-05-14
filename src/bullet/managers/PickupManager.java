@@ -229,15 +229,35 @@ public class PickupManager
         if (ammoLights != null)
         {
             for (int i = 0; i < ammoPickups.length; i++)
-                if (ammoPickups[i] != null && ammoLights[i] != null)
+            {
+                if (ammoPickups[i] == null || ammoLights[i] == null) continue;
+
+                if (ammoActive[i])
+                {
                     ammoLights[i].setLocation(ammoPickups[i].getWorldLocation());
+                }
+                else
+                {
+                    ammoLights[i].setLocation(new Vector3f(0.0f, -10000.0f, 0.0f));
+                }
+            }
         }
 
         if (healthLights != null)
         {
             for (int i = 0; i < healthPickups.length; i++)
-                if (healthPickups[i] != null && healthLights[i] != null)
+            {
+                if (healthPickups[i] == null || healthLights[i] == null) continue;
+
+                if (healthActive[i])
+                {
                     healthLights[i].setLocation(healthPickups[i].getWorldLocation());
+                }
+                else
+                {
+                    healthLights[i].setLocation(new Vector3f(0.0f, -10000.0f, 0.0f));
+                }
+            }
         }
     }
 }
