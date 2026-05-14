@@ -142,6 +142,19 @@ public class NetworkEnemyManager
             game.getEngine().getSceneGraph().removeGameObject(enemy);
     }
 
+    public int getLivingEnemyCount()
+    {
+        int count = 0;
+
+        for (Boolean dead : enemyDeadStates.values())
+        {
+            if (dead == null || !dead.booleanValue())
+                count++;
+        }
+
+        return count;
+    }
+
     public void clear()
     {
         for (GameObject enemy : enemies.values())

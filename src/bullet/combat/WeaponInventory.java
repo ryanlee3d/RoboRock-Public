@@ -185,6 +185,21 @@ public class WeaponInventory
         );
     }
 
+    public void fillAllAmmo()
+    {
+        for (WeaponType weapon : WeaponType.values())
+        {
+            if (!weapon.usesBullets())
+                continue;
+
+            int weaponIndex = weapon.ordinal();
+            magazineAmmo[weaponIndex] = weapon.getMagazineCapacity();
+            reserveAmmo[weaponIndex] = weapon.getReserveCapacity();
+        }
+
+        cancelReload();
+    }
+
     private void finishReload()
     {
         if (reloadingWeapon == null || !reloadingWeapon.usesBullets())

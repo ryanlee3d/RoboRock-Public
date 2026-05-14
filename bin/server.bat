@@ -1,1 +1,1 @@
-java bullet.GameServerUDP 5555
+java bullet.network.GameServerUDP 5555

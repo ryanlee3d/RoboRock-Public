@@ -1,1 +1,1 @@
-del .\bullet\*.class
+del /S .\bullet\*.class

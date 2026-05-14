@@ -1227,6 +1227,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     public void loadShapes()
     {
         terrS = new TerrainPlane(1000);
+        shopState.loadShape();
         brainS = new AnimatedShape("brain.rkm", "brain.rks");
         brainS.loadAnimation("FLOAT", "brainFloat.rka");
         skinnyS = new AnimatedShape("skinny.rkm", "skinny.rks");
@@ -1334,6 +1335,30 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         bossMusicStarted = false;
 
         scheduleLevelTwoArrivalEvent();
+    }
+
+    private void enterVendingShopView()
+    {
+        firstPersonMode = false;
+        updatePlayerVisibilityForCameraMode();
+
+        currentMoveDir.set(0, 0, 0);
+        stopPlayerHorizontalMotion();
+        endFireInput();
+    }
+
+    private void exitVendingShopView()
+    {
+        shopState.closeShop();
+
+        currentMoveDir.set(0, 0, 0);
+        stopPlayerHorizontalMotion();
+        endFireInput();
+
+        firstPersonMode = true;
+        updatePlayerVisibilityForCameraMode();
+
+        recenterMouse();
     }
 
     private void updateBrainAnimation()
@@ -1735,6 +1760,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         ufoWaveManager.buildObjects(ufoS, ufoTx);
 
+        shopState.buildObjects(centerBuildingTx);
+
         for (int i = 0; i < smallBuildings.length; i++)
         {
             smallBuildings[i] = new GameObject(GameObject.root(), smallBuildingS, smallBuildingTx);
@@ -1988,6 +2015,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void beginFireInput()
     {
+        if (shopState.isShopOpen())
+            return;
+
         if (gameState != GameState.PLAYING) return;
 
         if (!weaponInventory.currentUsesBullets()) return;
@@ -2356,8 +2386,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         AbstractInputAction zoomIn = overheadCameraController.createZoomInAction();
         AbstractInputAction zoomOut = overheadCameraController.createZoomOutAction();
-        AbstractInputAction elevUp = overheadCameraController.createElevationUpAction();
-        AbstractInputAction elevDown = overheadCameraController.createElevationDownAction();
         AbstractInputAction panUp = overheadCameraController.createPanUpAction();
         AbstractInputAction panDown = overheadCameraController.createPanDownAction();
         AbstractInputAction panLeft = overheadCameraController.createPanLeftAction();
@@ -2395,10 +2423,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.ADD, zoomIn,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.SUBTRACT, zoomOut,
-            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
-        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key._1, elevUp,
-            InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
-        im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key._2, elevDown,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
         im.associateActionWithAllKeyboards(net.java.games.input.Component.Identifier.Key.DOWN, panUp,
             InputManager.INPUT_ACTION_TYPE.REPEAT_WHILE_DOWN);
@@ -2454,6 +2478,34 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         setupNetworking();
         initAudio();
         setEarParameters();
+    }
+
+    private boolean areUfoWaveEnemiesCleared()
+    {
+        if (isHostClient)
+            return activeApes.size() == 0;
+
+        if (networkEnemyManager == null)
+            return true;
+
+        return networkEnemyManager.getLivingEnemyCount() == 0;
+    }
+
+    private void startNextHostUfoWaveAndSync()
+    {
+        if (!isHostClient)
+            return;
+
+        ufoWaveManager.startNextWave();
+
+        if (protClient != null && ufoWaveManager.isActive())
+        {
+            protClient.sendUfoWaveStart(
+                ufoWaveManager.getLastWaveTarget(),
+                ufoWaveManager.getLastWaveApeCount(),
+                ufoWaveManager.getLastWaveUfoIndex()
+            );
+        }
     }
 
     @Override
@@ -2555,6 +2607,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         applyGamepadLook(dt);
         finishGamepadFireIfReleased();
 
+        if (shopState.isShopOpen())
+        {
+            currentMoveDir.set(0, 0, 0);
+            stopPlayerHorizontalMotion();
+        }
+
         updateLevelTwoArrivalEvent(dt);
 
         updateLevelTwoMusic(dt);
@@ -2588,6 +2646,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         processNetworking(dt);
 
         weaponInventory.updateTimers(dt);
+
         updateWeaponAudio(dt);
 
         if (isFiring && weaponInventory.isAutomaticWeapon() && !weaponInventory.isReloading() && !weaponInventory.isCoolingDown())
@@ -2629,6 +2688,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (isHostClient)
             updateDeadApes(dt);
+
+        boolean wasShopping = shopState.isShopOpen();
+        boolean vendingExpired = shopState.update(dt);
+
+        if (vendingExpired && wasShopping)
+        {
+            exitVendingShopView();
+        }
+
+        if (vendingExpired && isHostClient && mapSelection == 0 && !ufoWaveManager.isActive() && !ufoWaveManager.isFinalWaveComplete())
+        {
+            startNextHostUfoWaveAndSync();
+        }
 
         bulletManager.update(dt);
 
@@ -2689,25 +2761,20 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             updateBrainBoss(dt);
         }
 
-        // if no apes alive, trigger next UFO, if last wave completed, trigger tractor beam
-        if (isHostClient && !ufoWaveManager.isActive() && activeApes.size() == 0 && mapSelection == 0)
+        // if no apes alive, bring up shop, trigger next UFO, if last wave completed, trigger tractor beam
+        if (mapSelection == 0 && !ufoWaveManager.isActive() && areUfoWaveEnemiesCleared())
         {
-            if (ufoWaveManager.isFinalWaveComplete())
+            if (isHostClient && ufoWaveManager.isFinalWaveComplete())
             {
                 startTractorBeam();
             }
-            else
+            else if (ufoWaveManager.getLastWaveApeCount() == 0)
             {
-                ufoWaveManager.startNextWave();
-
-                if (protClient != null && ufoWaveManager.isActive())
-                {
-                    protClient.sendUfoWaveStart(
-                        ufoWaveManager.getLastWaveTarget(),
-                        ufoWaveManager.getLastWaveApeCount(),
-                        ufoWaveManager.getLastWaveUfoIndex()
-                    );
-                }
+                startNextHostUfoWaveAndSync();
+            }
+            else if (!shopState.isActive())
+            {
+                shopState.startWindow(ufoWaveManager.getLastWaveTarget(), terr);
             }
         }
 
@@ -2777,20 +2844,33 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return;
         }
 
-        engine.getHUDmanager().setHUD1("Health: " + pHealth + " | Credits: $" + playerCredits, new Vector3f(0, 1, 0), 15, 660);
+        if (shopState.isActive())
+        {
+            shopState.renderHud(engine, pHealth, playerCredits);
+        }
+        else
+        {
+            engine.getHUDmanager().setHUD1(
+                "Health: " + pHealth + " | Credits: $" + playerCredits,
+                new Vector3f(0, 1, 0),
+                15,
+                660
+            );
 
-        /*
-        // Old bottom debug HUD. Re-enable this if you need player position / tractor beam status again.
-        String hud3Text = String.format("Player Pos: X(%.2f) Y(%.2f) Z(%.2f)", playerpos.x, playerpos.y, playerpos.z);
+            engine.getHUDmanager().setHUD2(
+                weaponInventory.getHudText(),
+                new Vector3f(1, 1, 1),
+                15,
+                630
+            );
 
-        if (physicsDebug || tractorBeamActive)
-            hud3Text += " | " + getTractorBeamDebugText(playerpos);
-        */
-
-        engine.getHUDmanager().setHUD3(
-            getObjectiveHudText(),
-            new Vector3f(1, 1, 1), 15, 15
-        );
+            engine.getHUDmanager().setHUD3(
+                getObjectiveHudText(),
+                new Vector3f(1, 1, 1),
+                15,
+                15
+            );
+        }
         if (brainActive && brainHealth > 0)
         {
             engine.getHUDmanager().setHUD4(
@@ -2887,7 +2967,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             super.keyPressed(e);
             return;
         }
+        if (shopState.isShopOpen())
+        {
+            shopState.handleShopKey(e.getKeyCode(), this, weaponInventory);
 
+            if (!shopState.isShopOpen())
+                exitVendingShopView();
+
+            return;
+        }
         if (gameState == GameState.PLAYING)
         {
             switch (e.getKeyCode())
@@ -2900,7 +2988,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     weaponInventory.beginReload();
                     break;
                 case KeyEvent.VK_E:
-                    startPlayerGrapple();
+                    if (shopState.tryToggleShop(player, playerP, currentMoveDir))
+                    {
+                        enterVendingShopView();
+                    }
+                    else
+                    {
+                        startPlayerGrapple();
+                    }
                     break;
                 case KeyEvent.VK_BACK_SLASH:
                     restartGame = new RestartGame(this);
@@ -3054,6 +3149,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public void movePlayerPhysics(Vector3f moveDir, float speed)
     {
+        if (shopState.isShopOpen())
+        {
+            stopPlayerHorizontalMotion();
+            return;
+        }
         if (playerDeathScreenActive) return;
         if (gameState != GameState.PLAYING) return;
         if (playerP == null) return;
@@ -3066,7 +3166,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         currentMoveSpeed = speed;
     }
 
-    public void stopPlayerHorizontalMotion(){};
+    public void stopPlayerHorizontalMotion()
+    {
+        currentMoveDir.set(0, 0, 0);
+
+        if (playerP != null)
+        {
+            float[] vel = playerP.getLinearVelocity();
+            playerP.setLinearVelocity(new float[] { 0.0f, vel[1], 0.0f });
+        }
+    }
 
     private void fireCurrentWeapon()
     {
