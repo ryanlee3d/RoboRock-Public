@@ -36,7 +36,7 @@ Aliens are invading and you need to fend off waves of robot apes, once you clear
 - **Mouse Movement / Gamepad Right Stick:** Look and aim
 - **Left Mouse Button / Gamepad Right Trigger or Right Bumper:** Fire weapon
 - **R / Gamepad X Button:** Reload
-- **E / Gamepad B Button:** Grapple
+- **E / Gamepad B Button:** Grapple / Vending
 - **Mouse Wheel Up / Gamepad Y Button:** Switch to next weapon
 - **Mouse Wheel Down / Gamepad Left Bumper:** Switch to previous weapon
 - **B:** Toggle plasma rifle fire mode
@@ -48,8 +48,8 @@ Aliens are invading and you need to fend off waves of robot apes, once you clear
 
 - **Numpad +:** Zoom overhead camera in
 - **Numpad -:** Zoom overhead camera out
-- **1:** Raise camera elevation
-- **2:** Lower camera elevation
+- **1:** Vending buy full health
+- **2:** Vending buy full ammo
 - **Arrow Keys:** Pan overhead camera
 - **C:** Recenter overhead camera
 - **P:** Toggle physics debug view
