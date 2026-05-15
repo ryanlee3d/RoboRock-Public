@@ -12,6 +12,7 @@ import org.joml.Math;
 import java.util.Random;
 
 // networking imports
+import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -45,6 +46,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private final ShopState shopState = new ShopState();
     private int menuSelection = 0;
     private final MainMenu menu = new MainMenu();
+    private String multiplayerStatusText = "";
 
     private int avatarSelection = 0;
     private final String[] avatarNames = {
@@ -107,6 +109,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private final int pHealthMin = 0;
     private final int pHealthMax = 150;
+    private static final int MAX_RESPAWN_LIVES = 3;
+    private int respawnLives = MAX_RESPAWN_LIVES;
     private int playerCredits = 0;
 
     private final WeaponInventory weaponInventory = new WeaponInventory();
@@ -182,6 +186,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int serverPort;
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
+    private Process hostedServerProcess;
     private boolean isClientConnected = false;
     private boolean isHostClient = false;
     private float networkUpdateTimer = 0.0f;
@@ -346,18 +351,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         System.out.println("No server connection detected. Running local offline host mode.");
     }
 
-    private void setupNetworking()
+    private boolean setupNetworking(String address, int port, boolean allowOfflineFallback)
     {
         isClientConnected = false;
+        isHostClient = false;
+        offlineMode = false;
+        protClient = null;
 
         try
         {
             protClient = new ProtocolClient(
-                InetAddress.getByName(serverAddress),
-                serverPort,
+                InetAddress.getByName(address),
+                port,
                 serverProtocol,
                 this
             );
+            serverAddress = address;
+            serverPort = port;
         }
         catch (UnknownHostException e)
         {
@@ -371,11 +381,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (protClient == null)
         {
             System.out.println("missing protocol host");
-            enableOfflineHostMode();
+            if (allowOfflineFallback)
+            {
+                enableOfflineHostMode();
+                return true;
+            }
+
+            multiplayerStatusText = "Could not connect to " + address + ":" + port;
+            return false;
         }
         else
         {
+            isClientConnected = true;
             protClient.sendJoinMessage();
+            multiplayerStatusText = "Connected to " + address + ":" + port;
+            return true;
         }
     }
 
@@ -1992,7 +2012,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void menuPreviousMap()
     {
-        if (menu.getSelectedIndex() == 1)
+        if (menu.activateSelection() == MainMenu.MenuAction.SELECT_MAP)
         {
             menu.previousMap();
             setMapSelection(menu.getSelectedMapIndex());
@@ -2002,7 +2022,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void menuNextMap()
     {
-        if (menu.getSelectedIndex() == 1)
+        if (menu.activateSelection() == MainMenu.MenuAction.SELECT_MAP)
         {
             menu.nextMap();
             setMapSelection(menu.getSelectedMapIndex());
@@ -2026,6 +2046,10 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 break;
 
             case MULTIPLAYER:
+                gameState = GameState.MULTIPLAYER_MENU;
+                multiplayerStatusText = "Choose Host Game or Join Game";
+                break;
+
             case OPTIONS:
                 break;
 
@@ -2042,6 +2066,77 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 System.out.println("Menu option not implemented yet: " + menu.getSelectedItem());
                 break;
         }
+    }
+
+    private void beginHostGame()
+    {
+        multiplayerStatusText = "Hosting game...";
+        serverProtocol = ProtocolType.UDP;
+        startServerBatchIfNeeded();
+
+        if (setupNetworking("127.0.0.1", serverPort, true))
+        {
+            gameState = GameState.ROBOT_SELECT;
+            applyAvatarSelectionTexture();
+        }
+    }
+
+    private void beginJoinGame()
+    {
+        multiplayerStatusText = "Joining game...";
+
+        if (setupNetworking(serverAddress, serverPort, false))
+        {
+            gameState = GameState.ROBOT_SELECT;
+            applyAvatarSelectionTexture();
+        }
+        else
+        {
+            gameState = GameState.MULTIPLAYER_MENU;
+        }
+    }
+
+    private void startServerBatchIfNeeded()
+    {
+        if (hostedServerProcess != null && hostedServerProcess.isAlive())
+            return;
+
+        try
+        {
+            File serverBatch = getServerBatchFile();
+            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", "server.bat");
+            pb.directory(serverBatch.getParentFile());
+            pb.redirectErrorStream(true);
+            pb.inheritIO();
+            hostedServerProcess = pb.start();
+            multiplayerStatusText = "Starting server on port " + serverPort;
+
+            try
+            {
+                Thread.sleep(750);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+        }
+        catch (IOException e)
+        {
+            multiplayerStatusText = "Using existing server on port " + serverPort;
+            System.out.println("Could not start server.bat, trying to connect instead: " + e.getMessage());
+        }
+    }
+
+    private File getServerBatchFile() throws IOException
+    {
+        File serverBatch = new File("server.bat");
+        if (!serverBatch.exists())
+            serverBatch = new File("src", "server.bat");
+
+        if (!serverBatch.exists())
+            throw new IOException("server.bat not found");
+
+        return serverBatch.getCanonicalFile();
     }
 
     private void beginFireInput()
@@ -2219,6 +2314,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return;
         }
 
+        if (gameState == GameState.MULTIPLAYER_MENU)
+        {
+            if (menu.getSelectedMultiplayerIndex() == 0)
+                beginHostGame();
+            else
+                beginJoinGame();
+
+            return;
+        }
+
         if (gameState == GameState.ROBOT_SELECT)
         {
             startSelectedGame();
@@ -2243,6 +2348,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 if (v < 0.0f) menuMoveUp();
                 else menuMoveDown();
+
+                return;
+            }
+
+            if (gameState == GameState.MULTIPLAYER_MENU)
+            {
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) menu.moveMultiplayerUp();
+                else menu.moveMultiplayerDown();
 
                 return;
             }
@@ -2383,7 +2498,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         gameState = GameState.PLAYING;
         firstPersonMode = true;
         physicsDebug = false;
+        respawnLives = MAX_RESPAWN_LIVES;
+        pHealth = 100;
+        playerDeathScreenActive = false;
         engine.disablePhysicsWorldRender();
+        respawnPlayerAtCurrentMapStart();
 
         engine.getHUDmanager().setHUD1("", new Vector3f(1, 1, 1), 0, 0);
         engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
@@ -2515,7 +2634,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         im.associateActionWithAllGamepads(net.java.games.input.Component.Identifier.Button._4, new GamepadPreviousWeaponAction(),
             InputManager.INPUT_ACTION_TYPE.ON_PRESS_ONLY);
 
-        setupNetworking();
         initAudio();
         setEarParameters();
     }
@@ -2571,9 +2689,23 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             return;
         }
 
+        if (gameState == GameState.MULTIPLAYER_MENU)
+        {
+            mouseModeInitiated = false;
+            engine.getHUDmanager().setHUD1("MULTIPLAYER", new Vector3f(0.95f, 0.8f, 0.45f), 500, 620);
+            engine.getHUDmanager().setHUD2(menu.getMultiplayerText(), new Vector3f(1.0f, 1.0f, 1.0f), 250, 560);
+            engine.getHUDmanager().setHUD3(menu.getMultiplayerFooterText(), new Vector3f(0.7f, 0.9f, 0.7f), 360, 120);
+            engine.getHUDmanager().setHUD4(multiplayerStatusText, new Vector3f(0.7f, 0.9f, 1.0f), 350, 500);
+
+            if (im != null)
+                im.update(0.016f);
+            return;
+        }
+
         if (gameState == GameState.ROBOT_SELECT)
         {
             mouseModeInitiated = false;
+            processNetworking(0.016f);
 
             engine.getHUDmanager().setHUD1(
                 "ROBOT SELECT",
@@ -2915,7 +3047,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         else
         {
             engine.getHUDmanager().setHUD1(
-                "Health: " + pHealth + " | Credits: $" + playerCredits,
+                "Health: " + pHealth + " | Lives: " + respawnLives + " | Credits: $" + playerCredits,
                 new Vector3f(0, 1, 0),
                 15,
                 660
@@ -2976,7 +3108,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     menuSelection = menu.getSelectedIndex();
                     break;
                 case KeyEvent.VK_LEFT:
-                    if (menu.getSelectedIndex() == 1)
+                    if (menu.activateSelection() == MainMenu.MenuAction.SELECT_MAP)
                     {
                         menu.previousMap();
                         setMapSelection(menu.getSelectedMapIndex());
@@ -2984,7 +3116,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     }
                     break;
                 case KeyEvent.VK_RIGHT:
-                    if (menu.getSelectedIndex() == 1)
+                    if (menu.activateSelection() == MainMenu.MenuAction.SELECT_MAP)
                     {
                         menu.nextMap();
                         setMapSelection(menu.getSelectedMapIndex());
@@ -2994,6 +3126,38 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 case KeyEvent.VK_ENTER:
                     activateCurrentMenuSelection();
                     break;
+                default:
+                    break;
+            }
+
+            super.keyPressed(e);
+            return;
+        }
+
+        if (gameState == GameState.MULTIPLAYER_MENU)
+        {
+            switch (e.getKeyCode())
+            {
+                case KeyEvent.VK_UP:
+                    menu.moveMultiplayerUp();
+                    break;
+
+                case KeyEvent.VK_DOWN:
+                    menu.moveMultiplayerDown();
+                    break;
+
+                case KeyEvent.VK_ENTER:
+                    if (menu.getSelectedMultiplayerIndex() == 0)
+                        beginHostGame();
+                    else
+                        beginJoinGame();
+                    break;
+
+                case KeyEvent.VK_ESCAPE:
+                    gameState = GameState.MENU;
+                    multiplayerStatusText = "";
+                    break;
+
                 default:
                     break;
             }
@@ -3889,6 +4053,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (playerDeathScreenActive)
             return;
 
+        respawnLives = java.lang.Math.max(0, respawnLives - 1);
         playerDeathScreenActive = true;
         gameState = GameState.PAUSED;
         physicsDebug = true;
@@ -3914,17 +4079,38 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void showDeathContinueHud()
     {
+        if (respawnLives <= 0)
+        {
+            engine.getHUDmanager().setHUD1(
+                "GAME OVER",
+                new Vector3f(1.0f, 0.1f, 0.1f),
+                520,
+                400
+            );
+
+            engine.getHUDmanager().setHUD2(
+                "<press ENTER for menu>",
+                new Vector3f(0.95f, 0.95f, 0.95f),
+                460,
+                350
+            );
+
+            engine.getHUDmanager().setHUD3("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+            engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+            return;
+        }
+
         engine.getHUDmanager().setHUD1(
-            "CONTINUE",
+            "RESPAWN",
             new Vector3f(1.0f, 1.0f, 1.0f),
             520,
             400
         );
 
         engine.getHUDmanager().setHUD2(
-            "<press ENTER>",
+            "Lives remaining: " + respawnLives + "  |  <press ENTER>",
             new Vector3f(0.95f, 0.95f, 0.95f),
-            500,
+            430,
             350
         );
 
@@ -3934,6 +4120,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void continueAfterPlayerDeath()
     {
+        if (respawnLives <= 0)
+        {
+            returnToMenuAfterGameOver();
+            return;
+        }
+
         playerDeathScreenActive = false;
         pHealth = 100;
         gameState = GameState.PLAYING;
@@ -3947,6 +4139,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         if (playerP != null)
             playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
 
+        respawnPlayerAtCurrentMapStart();
+
         if (playerGrappleLine != null)
             playerGrappleLine.setLocalScale(new Matrix4f().scaling(0.0001f));
 
@@ -3956,6 +4150,61 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
 
         System.out.println("Player continued after death");
+    }
+
+    private void respawnPlayerAtCurrentMapStart()
+    {
+        if (player == null)
+            return;
+
+        Vector3f respawnPos = getCurrentMapRespawnPosition();
+
+        if (playerP != null)
+        {
+            playerP.setLocation(new float[] { respawnPos.x, respawnPos.y, respawnPos.z });
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+        }
+
+        player.setLocalTranslation(
+            new Matrix4f().translation(respawnPos.x, respawnPos.y - playerVisualYOffset, respawnPos.z)
+        );
+    }
+
+    private Vector3f getCurrentMapRespawnPosition()
+    {
+        if (terr == null)
+            return new Vector3f(playerStartPos);
+
+        if (mapSelection == 1)
+        {
+            float y = terr.getHeight(0.0f, 10.0f) + playerVisualYOffset + 2.0f;
+            return new Vector3f(0.0f, y, 10.0f);
+        }
+
+        return new Vector3f(playerStartPos);
+    }
+
+    private void returnToMenuAfterGameOver()
+    {
+        playerDeathScreenActive = false;
+        gameState = GameState.MENU;
+        physicsDebug = false;
+        pHealth = 100;
+        respawnLives = MAX_RESPAWN_LIVES;
+        isFiring = false;
+        plasmaBurstShotsRemaining = 0;
+        playerGrappling = false;
+        currentMoveDir.set(0.0f, 0.0f, 0.0f);
+        gameAudio.stopRifleLoopSound();
+        engine.disablePhysicsWorldRender();
+
+        if (playerP != null)
+            playerP.setLinearVelocity(new float[] { 0.0f, 0.0f, 0.0f });
+
+        engine.getHUDmanager().setHUD1("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD2("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD3("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
+        engine.getHUDmanager().setHUD4("", new Vector3f(1.0f, 1.0f, 1.0f), 0, 0);
     }
 
     private String getObjectiveHudText()
