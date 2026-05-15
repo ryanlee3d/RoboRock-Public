@@ -192,6 +192,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean networkWaveHasSpawnedEnemies = false;
     private boolean ufoShopWindowUsedForCurrentWave = false;
+    private boolean offlineMode = false;
     
     // skyboxes
     private int spaceSkyBox, islandSkyBox, lushSkyBox, plainsSkyBox;
@@ -319,6 +320,24 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         serverProtocol = protocol.toUpperCase().compareTo("TCP") == 0 ? ProtocolType.TCP : ProtocolType.UDP;
     }
 
+    private void enableOfflineHostMode()
+    {
+        if (offlineMode)
+            return;
+
+        offlineMode = true;
+        isClientConnected = false;
+        isHostClient = true;
+
+        // Stop trying to send network messages when running solo.
+        protClient = null;
+
+        networkWaveHasSpawnedEnemies = false;
+        ufoShopWindowUsedForCurrentWave = false;
+
+        System.out.println("No server connection detected. Running local offline host mode.");
+    }
+
     private void setupNetworking()
     {
         isClientConnected = false;
@@ -342,9 +361,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
 
         if (protClient == null)
+        {
             System.out.println("missing protocol host");
+            enableOfflineHostMode();
+        }
         else
+        {
             protClient.sendJoinMessage();
+        }
     }
 
     protected void processNetworking(float elapsTime)
@@ -2351,6 +2375,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         engine.getHUDmanager().setHUD2("", new Vector3f(1, 1, 1), 0, 0);
         engine.getHUDmanager().setHUD3("", new Vector3f(1, 1, 1), 0, 0);
         engine.getHUDmanager().setHUD4("", new Vector3f(1, 1, 1), 0, 0);
+
+        if (!isClientConnected && !isHostClient)
+            enableOfflineHostMode();
 
         if (protClient != null)
             protClient.sendCreateMessage(getPlayerPosition());
