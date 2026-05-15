@@ -236,6 +236,14 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private boolean isFiring = false;
 
+    private float knifeStabTimer = 0.0f;
+    private float knifeAttackCooldown = 0.0f;
+
+    private static final float KNIFE_STAB_DURATION = 0.18f;
+    private static final float KNIFE_ATTACK_COOLDOWN = 0.45f;
+    private static final float KNIFE_RANGE = 2.5f;
+    private static final int KNIFE_DAMAGE = 50;
+
     // plasma rifle burst fire control
     private int plasmaBurstShotsRemaining = 0;
     private float plasmaBurstTimer = 0.0f;
@@ -2043,6 +2051,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (gameState != GameState.PLAYING) return;
 
+        if (weaponInventory.getCurrentWeapon() == WeaponType.KNIFE)
+        {
+            performKnifeAttack();
+            return;
+        }
+
         if (!weaponInventory.currentUsesBullets()) return;
         if (weaponInventory.isReloading()) return;
         if (weaponInventory.getCurrentWeapon() == WeaponType.SHOTGUN && isShotgunPumping()) return;
@@ -2674,6 +2688,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         processNetworking(dt);
 
         weaponInventory.updateTimers(dt);
+
+        updateKnifeStab(dt);
 
         updateWeaponAudio(dt);
 
@@ -3310,6 +3326,79 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         weaponInventory.startFireCooldown();
     }
 
+    private void performKnifeAttack()
+    {
+        if (knifeAttackCooldown > 0.0f)
+            return;
+
+        if (player == null || cam == null)
+            return;
+
+        knifeAttackCooldown = KNIFE_ATTACK_COOLDOWN;
+        knifeStabTimer = KNIFE_STAB_DURATION;
+
+        Vector3f forward = new Vector3f(cam.getN()).normalize();
+
+        Vector3f start = new Vector3f(player.getWorldLocation())
+            .add(0.0f, 1.3f, 0.0f);
+
+        for (float d = 0.75f; d <= KNIFE_RANGE; d += 0.35f)
+        {
+            Vector3f hitPoint = new Vector3f(start)
+                .add(new Vector3f(forward).mul(d));
+
+            if (checkAndDamageApe(hitPoint, null, KNIFE_DAMAGE))
+                return;
+
+            if (checkAndDamageSkinny(hitPoint, null, KNIFE_DAMAGE))
+                return;
+
+            if (checkAndDamageBrain(hitPoint, KNIFE_DAMAGE))
+                return;
+        }
+    }
+
+    private void updateKnifeStab(float dt)
+    {
+        if (knifeAttackCooldown > 0.0f)
+            knifeAttackCooldown -= dt;
+
+        if (knife == null)
+            return;
+
+        if (knifeStabTimer > 0.0f)
+        {
+            knifeStabTimer -= dt;
+
+            float progress = 1.0f - java.lang.Math.max(0.0f, knifeStabTimer) / KNIFE_STAB_DURATION;
+
+            float stabAmount;
+
+            if (progress < 0.5f)
+                stabAmount = progress * 2.0f * 0.75f;
+            else
+                stabAmount = (1.0f - progress) * 2.0f * 0.75f;
+
+            knife.setLocalTranslation(
+                new Matrix4f().translation(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z + stabAmount
+                )
+            );
+        }
+        else
+        {
+            knife.setLocalTranslation(
+                new Matrix4f().translation(
+                    weaponPos.x,
+                    weaponPos.y,
+                    weaponPos.z
+                )
+            );
+        }
+    }
+
     public void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
     {
         bulletManager.spawnEnemyBullet(spawnPos, dir, isPlasma);
@@ -3317,11 +3406,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public boolean checkAndDamageApe(Vector3f loc)
     {
-        return checkAndDamageApe(loc, null);
+        return checkAndDamageApe(loc, null, 100);
     }
 
     public boolean checkAndDamageApe(Vector3f loc, UUID shooterID)
     {
+        return checkAndDamageApe(loc, shooterID, 100);
+    }
+
+    public boolean checkAndDamageApe(Vector3f loc, UUID shooterID, int damage)
+{
         for (int j = activeApes.size() - 1; j >= 0; j--)
         {
             GameObject ape = activeApes.get(j);
@@ -3331,7 +3425,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             {
                 if (!activeApeDead.get(j))
                 {
-                    int hp = activeApeHealth.get(j) - 100;
+                    int hp = activeApeHealth.get(j) - damage;
                     activeApeHealth.set(j, hp);
 
                     if (hp <= 0)
@@ -3374,10 +3468,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public boolean checkAndDamageSkinny(Vector3f loc)
     {
-        return checkAndDamageSkinny(loc, null);
+        return checkAndDamageSkinny(loc, null, 100);
     }
 
     public boolean checkAndDamageSkinny(Vector3f loc, UUID shooterID)
+    {
+        return checkAndDamageSkinny(loc, shooterID, 100);
+    }
+
+    public boolean checkAndDamageSkinny(Vector3f loc, UUID shooterID, int damage)
     {
         for (int i = activeSkinnys.size() - 1; i >= 0; i--)
         {
@@ -3387,7 +3486,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
             if (loc.distance(s.getWorldLocation()) < 1.0f)
             {
-                int hp = activeSkinnyHealth.get(i) - 100;
+                int hp = activeSkinnyHealth.get(i) - damage;
                 activeSkinnyHealth.set(i, hp);
 
                 if (hp <= 0)
@@ -3446,6 +3545,11 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     public boolean checkAndDamageBrain(Vector3f loc)
     {
+        return checkAndDamageBrain(loc, 20);
+    }
+
+    public boolean checkAndDamageBrain(Vector3f loc, int damage)
+    {
         if (!isHostClient)
             return false;
 
@@ -3454,7 +3558,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (loc.distance(brain.getWorldLocation()) < 2.0f)
         {
-            brainHealth -= 20;
+            brainHealth -= damage;
 
             if (brainHealth <= 0)
             {
