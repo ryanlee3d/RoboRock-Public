@@ -191,7 +191,9 @@ public class ProtocolClient extends GameConnectionClient
                 );
 
                 boolean isPlasma = Boolean.parseBoolean(tokens[8]);
-                game.receiveNetworkPlayerBullet(senderID, pos, dir, isPlasma);
+                int enemyDamage = tokens.length > 9 ? Integer.parseInt(tokens[9]) : 100;
+                int brainDamage = tokens.length > 10 ? Integer.parseInt(tokens[10]) : 20;
+                game.receiveNetworkPlayerBullet(senderID, pos, dir, isPlasma, enemyDamage, brainDamage);
             }
 
             // CREDIT AWARD
@@ -393,6 +395,11 @@ public class ProtocolClient extends GameConnectionClient
 
     public void sendPlayerBullet(Vector3f pos, Vector3f dir, boolean isPlasma)
     {
+        sendPlayerBullet(pos, dir, isPlasma, 100, 20);
+    }
+
+    public void sendPlayerBullet(Vector3f pos, Vector3f dir, boolean isPlasma, int enemyDamage, int brainDamage)
+    {
         try
         {
             String msg = "playerBullet," + id +
@@ -402,7 +409,9 @@ public class ProtocolClient extends GameConnectionClient
                     "," + dir.x() +
                     "," + dir.y() +
                     "," + dir.z() +
-                    "," + isPlasma;
+                    "," + isPlasma +
+                    "," + enemyDamage +
+                    "," + brainDamage;
 
             sendPacket(msg);
         }

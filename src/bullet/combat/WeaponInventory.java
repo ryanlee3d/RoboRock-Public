@@ -2,11 +2,22 @@ package bullet.combat;
 
 public class WeaponInventory
 {
+    public static final int MAX_DAMAGE_UPGRADE_LEVEL = 4;
+    public static final int MAX_AMMO_UPGRADE_LEVEL = 4;
+
+    private static final float DAMAGE_MULTIPLIER_STEP = 0.25f;
+    private static final float AMMO_MULTIPLIER_STEP = 0.25f;
+    private static final int BASE_ENEMY_BULLET_DAMAGE = 100;
+    private static final int BASE_BRAIN_BULLET_DAMAGE = 20;
+
     private WeaponType currentWeapon = WeaponType.KNIFE;
     private boolean plasmaBurstMode = true;
 
     private final int[] magazineAmmo = new int[WeaponType.COUNT];
     private final int[] reserveAmmo = new int[WeaponType.COUNT];
+
+    private int damageUpgradeLevel = 0;
+    private int ammoUpgradeLevel = 0;
 
     private boolean reloading = false;
     private WeaponType reloadingWeapon = null;
@@ -20,10 +31,13 @@ public class WeaponInventory
 
     public void reset()
     {
+        damageUpgradeLevel = 0;
+        ammoUpgradeLevel = 0;
+
         for (WeaponType weapon : WeaponType.values())
         {
-            magazineAmmo[weapon.ordinal()] = weapon.getMagazineCapacity();
-            reserveAmmo[weapon.ordinal()] = weapon.getInitialReserve();
+            magazineAmmo[weapon.ordinal()] = getMagazineCapacity(weapon);
+            reserveAmmo[weapon.ordinal()] = getInitialReserve(weapon);
         }
 
         currentWeapon = WeaponType.KNIFE;
@@ -118,12 +132,99 @@ public class WeaponInventory
         return getCurrentMagazineAmmo() + getCurrentReserveAmmo();
     }
 
+    public int getDamageUpgradeLevel()
+    {
+        return damageUpgradeLevel;
+    }
+
+    public int getAmmoUpgradeLevel()
+    {
+        return ammoUpgradeLevel;
+    }
+
+    public boolean isDamageUpgradeMaxed()
+    {
+        return damageUpgradeLevel >= MAX_DAMAGE_UPGRADE_LEVEL;
+    }
+
+    public boolean isAmmoUpgradeMaxed()
+    {
+        return ammoUpgradeLevel >= MAX_AMMO_UPGRADE_LEVEL;
+    }
+
+    public float getDamageMultiplier()
+    {
+        return 1.0f + (damageUpgradeLevel * DAMAGE_MULTIPLIER_STEP);
+    }
+
+    public float getAmmoMultiplier()
+    {
+        return 1.0f + (ammoUpgradeLevel * AMMO_MULTIPLIER_STEP);
+    }
+
+    public boolean upgradeDamageMultiplier()
+    {
+        if (isDamageUpgradeMaxed())
+            return false;
+
+        damageUpgradeLevel++;
+        return true;
+    }
+
+    public boolean upgradeAmmoMultiplier()
+    {
+        if (isAmmoUpgradeMaxed())
+            return false;
+
+        float oldMultiplier = getAmmoMultiplier();
+        ammoUpgradeLevel++;
+        float newMultiplier = getAmmoMultiplier();
+
+        for (WeaponType weapon : WeaponType.values())
+        {
+            if (!weapon.usesBullets())
+                continue;
+
+            int weaponIndex = weapon.ordinal();
+            int oldMagazineCapacity = getScaledAmount(weapon.getMagazineCapacity(), oldMultiplier);
+            int oldReserveCapacity = getScaledAmount(weapon.getReserveCapacity(), oldMultiplier);
+            int newMagazineCapacity = getScaledAmount(weapon.getMagazineCapacity(), newMultiplier);
+            int newReserveCapacity = getScaledAmount(weapon.getReserveCapacity(), newMultiplier);
+
+            magazineAmmo[weaponIndex] = java.lang.Math.min(
+                newMagazineCapacity,
+                magazineAmmo[weaponIndex] + (newMagazineCapacity - oldMagazineCapacity)
+            );
+            reserveAmmo[weaponIndex] = java.lang.Math.min(
+                newReserveCapacity,
+                reserveAmmo[weaponIndex] + (newReserveCapacity - oldReserveCapacity)
+            );
+        }
+
+        return true;
+    }
+
+    public int scaleDamage(int baseDamage)
+    {
+        return java.lang.Math.max(1, java.lang.Math.round(baseDamage * getDamageMultiplier()));
+    }
+
+    public int getCurrentEnemyBulletDamage()
+    {
+        return scaleDamage(BASE_ENEMY_BULLET_DAMAGE);
+    }
+
+    public int getCurrentBrainBulletDamage()
+    {
+        return scaleDamage(BASE_BRAIN_BULLET_DAMAGE);
+    }
+
     public void addAmmoPickupBundle()
     {
         for (WeaponType weapon : WeaponType.values())
         {
             if (weapon.usesBullets())
-                addReserveAmmo(weapon, weapon.getPickupAmount());
+                addReserveAmmo(weapon, getPickupAmount(weapon));
         }
     }
 
@@ -131,7 +232,7 @@ public class WeaponInventory
     {
         if (!currentUsesBullets()) return;
         if (reloading && reloadingWeapon == currentWeapon) return;
-        if (magazineAmmo[currentWeapon.ordinal()] >= currentWeapon.getMagazineCapacity()) return;
+        if (magazineAmmo[currentWeapon.ordinal()] >= getMagazineCapacity(currentWeapon)) return;
         if (reserveAmmo[currentWeapon.ordinal()] <= 0) return;
 
         reloading = true;
@@ -180,7 +281,7 @@ public class WeaponInventory
 
         int weaponIndex = weapon.ordinal();
         reserveAmmo[weaponIndex] = java.lang.Math.min(
-            weapon.getReserveCapacity(),
+            getReserveCapacity(weapon),
             reserveAmmo[weaponIndex] + amount
         );
     }
@@ -193,8 +294,8 @@ public class WeaponInventory
                 continue;
 
             int weaponIndex = weapon.ordinal();
-            magazineAmmo[weaponIndex] = weapon.getMagazineCapacity();
-            reserveAmmo[weaponIndex] = weapon.getReserveCapacity();
+            magazineAmmo[weaponIndex] = getMagazineCapacity(weapon);
+            reserveAmmo[weaponIndex] = getReserveCapacity(weapon);
         }
 
         cancelReload();
@@ -209,12 +310,40 @@ public class WeaponInventory
         }
 
         int weaponIndex = reloadingWeapon.ordinal();
-        int ammoNeeded = reloadingWeapon.getMagazineCapacity() - magazineAmmo[weaponIndex];
+        int ammoNeeded = getMagazineCapacity(reloadingWeapon) - magazineAmmo[weaponIndex];
         int ammoToLoad = java.lang.Math.min(ammoNeeded, reserveAmmo[weaponIndex]);
 
         magazineAmmo[weaponIndex] += ammoToLoad;
         reserveAmmo[weaponIndex] -= ammoToLoad;
 
         cancelReload();
+    }
+
+    private int getMagazineCapacity(WeaponType weapon)
+    {
+        return getScaledAmount(weapon.getMagazineCapacity(), getAmmoMultiplier());
+    }
+
+    private int getReserveCapacity(WeaponType weapon)
+    {
+        return getScaledAmount(weapon.getReserveCapacity(), getAmmoMultiplier());
+    }
+
+    private int getInitialReserve(WeaponType weapon)
+    {
+        return getScaledAmount(weapon.getInitialReserve(), getAmmoMultiplier());
+    }
+
+    private int getPickupAmount(WeaponType weapon)
+    {
+        return getScaledAmount(weapon.getPickupAmount(), getAmmoMultiplier());
+    }
+
+    private int getScaledAmount(int baseAmount, float multiplier)
+    {
+        if (baseAmount <= 0)
+            return 0;
+
+        return java.lang.Math.max(1, java.lang.Math.round(baseAmount * multiplier));
     }
 }

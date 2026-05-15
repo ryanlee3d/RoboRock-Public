@@ -46,18 +46,26 @@ public class BulletManager {
     }
 
     public void spawnPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, false, null);
+        spawnPlayerBullet(spawnPos, dir, isPlasma, 100, 20);
+    }
+
+    public void spawnPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, int enemyDamage, int brainDamage) {
+        spawnBullet(spawnPos, dir, isPlasma, false, null, enemyDamage, brainDamage);
     }
 
     public void spawnNetworkPlayerBullet(UUID ownerID, Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, false, ownerID);
+        spawnNetworkPlayerBullet(ownerID, spawnPos, dir, isPlasma, 100, 20);
+    }
+
+    public void spawnNetworkPlayerBullet(UUID ownerID, Vector3f spawnPos, Vector3f dir, boolean isPlasma, int enemyDamage, int brainDamage) {
+        spawnBullet(spawnPos, dir, isPlasma, false, ownerID, enemyDamage, brainDamage);
     }
 
     public void spawnEnemyBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma) {
-        spawnBullet(spawnPos, dir, isPlasma, true, null);
+        spawnBullet(spawnPos, dir, isPlasma, true, null, 100, 20);
     }
 
-    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy, UUID ownerID) {
+    private void spawnBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma, boolean fromEnemy, UUID ownerID, int enemyDamage, int brainDamage) {
         GameObject bulletObj = new GameObject(GameObject.root(), bulletSphereS, isPlasma ? bulletBlueTx : bulletYellowTx);
         float scale = isPlasma ? plasmaRadius : bulletRadius;
         bulletObj.setLocalTranslation(new Matrix4f().translation(spawnPos.x, spawnPos.y, spawnPos.z));
@@ -77,7 +85,7 @@ public class BulletManager {
         bulletP.setLinearVelocity(new float[] { velocity.x, velocity.y, velocity.z });
         bulletObj.setPhysicsObject(bulletP);
 
-        activeBullets.add(new Bullet(bulletObj, bulletP, velocity, bulletLifeMax, isPlasma, fromEnemy, ownerID));
+        activeBullets.add(new Bullet(bulletObj, bulletP, velocity, bulletLifeMax, isPlasma, fromEnemy, ownerID, enemyDamage, brainDamage));
     }
 
     public void update(float dt) {
@@ -101,9 +109,9 @@ public class BulletManager {
                     bulletRemoved = true;
                 }
             } else {
-                if (game.checkAndDamageApe(loc, b.ownerID) ||
-                    game.checkAndDamageSkinny(loc, b.ownerID) ||
-                    game.checkAndDamageBrain(loc))
+                if (game.checkAndDamageApe(loc, b.ownerID, b.enemyDamage) ||
+                    game.checkAndDamageSkinny(loc, b.ownerID, b.enemyDamage) ||
+                    game.checkAndDamageBrain(loc, b.brainDamage))
                     bulletRemoved = true;
             }
 

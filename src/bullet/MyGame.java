@@ -1735,9 +1735,9 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         attachWeaponToPlayer(knife);
 
         pistol = new GameObject(GameObject.root(), pistolS, pistolTx);
-        pistol.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y, weaponPos.z));
+        pistol.setLocalTranslation(new Matrix4f().translation(weaponPos.x, weaponPos.y - 0.1f, weaponPos.z - 0.1f));
         pistol.setLocalRotation(new Matrix4f().rotationY((float)java.lang.Math.toRadians(weaponRotY)));
-        pistol.setLocalScale(new Matrix4f().scaling(weaponScale));
+        pistol.setLocalScale(new Matrix4f().scaling(weaponScale + 0.01f));
         attachWeaponToPlayer(pistol);
 
         plasmaRifle = new GameObject(GameObject.root(), plasmaRifleS, plasmaRifleTx);
@@ -2771,10 +2771,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                     .add(0.0f, 1.5f, 0.0f)
                     .add(new Vector3f(dir).mul(1.5f));
 
-                bulletManager.spawnPlayerBullet(spawnPos, dir, true);
+                int enemyDamage = weaponInventory.getCurrentEnemyBulletDamage();
+                int brainDamage = weaponInventory.getCurrentBrainBulletDamage();
+
+                bulletManager.spawnPlayerBullet(spawnPos, dir, true, enemyDamage, brainDamage);
 
                 if (protClient != null)
-                    protClient.sendPlayerBullet(spawnPos, dir, true);
+                    protClient.sendPlayerBullet(spawnPos, dir, true, enemyDamage, brainDamage);
 
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playPlasmaRifle();
@@ -2907,7 +2910,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
         if (shopState.isActive())
         {
-            shopState.renderHud(engine, pHealth, playerCredits);
+            shopState.renderHud(engine, pHealth, playerCredits, weaponInventory);
         }
         else
         {
@@ -3262,10 +3265,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         switch (currentWeapon)
         {
             case PISTOL:
-                bulletManager.spawnPlayerBullet(spawnPos, forward, false);
-
-                if (protClient != null)
-                    protClient.sendPlayerBullet(spawnPos, forward, false);
+                spawnAndSyncPlayerBullet(spawnPos, forward, false);
 
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playPistolShot();
@@ -3279,21 +3279,15 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 }
                 else
                 {
-                bulletManager.spawnPlayerBullet(spawnPos, forward, true);
+                    spawnAndSyncPlayerBullet(spawnPos, forward, true);
 
-                if (protClient != null)
-                    protClient.sendPlayerBullet(spawnPos, forward, true);
-
-                weaponInventory.consumeCurrentRound();
-                gameAudio.playPlasmaRifle();
+                    weaponInventory.consumeCurrentRound();
+                    gameAudio.playPlasmaRifle();
                 }
                 break;
 
             case RIFLE:
-                bulletManager.spawnPlayerBullet(spawnPos, forward, false);
-
-                if (protClient != null)
-                    protClient.sendPlayerBullet(spawnPos, forward, false);
+                spawnAndSyncPlayerBullet(spawnPos, forward, false);
 
                 weaponInventory.consumeCurrentRound();
                 gameAudio.playRifleLoopSound();
@@ -3308,10 +3302,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                         ((float)Math.random() - 0.5f) * shotgunSpread
                     ).normalize();
 
-                bulletManager.spawnPlayerBullet(spawnPos, spreadDir, false);
-
-                if (protClient != null)
-                    protClient.sendPlayerBullet(spawnPos, spreadDir, false);
+                    spawnAndSyncPlayerBullet(spawnPos, spreadDir, false);
                 }
                 weaponInventory.consumeCurrentRound();
 
@@ -3347,15 +3338,28 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             Vector3f hitPoint = new Vector3f(start)
                 .add(new Vector3f(forward).mul(d));
 
-            if (checkAndDamageApe(hitPoint, null, KNIFE_DAMAGE))
+            int knifeDamage = weaponInventory.scaleDamage(KNIFE_DAMAGE);
+
+            if (checkAndDamageApe(hitPoint, null, knifeDamage))
                 return;
 
-            if (checkAndDamageSkinny(hitPoint, null, KNIFE_DAMAGE))
+            if (checkAndDamageSkinny(hitPoint, null, knifeDamage))
                 return;
 
-            if (checkAndDamageBrain(hitPoint, KNIFE_DAMAGE))
+            if (checkAndDamageBrain(hitPoint, knifeDamage))
                 return;
         }
+    }
+
+    private void spawnAndSyncPlayerBullet(Vector3f spawnPos, Vector3f dir, boolean isPlasma)
+    {
+        int enemyDamage = weaponInventory.getCurrentEnemyBulletDamage();
+        int brainDamage = weaponInventory.getCurrentBrainBulletDamage();
+
+        bulletManager.spawnPlayerBullet(spawnPos, dir, isPlasma, enemyDamage, brainDamage);
+
+        if (protClient != null)
+            protClient.sendPlayerBullet(spawnPos, dir, isPlasma, enemyDamage, brainDamage);
     }
 
     private void updateKnifeStab(float dt)
@@ -3415,7 +3419,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     }
 
     public boolean checkAndDamageApe(Vector3f loc, UUID shooterID, int damage)
-{
+    {
         for (int j = activeApes.size() - 1; j >= 0; j--)
         {
             GameObject ape = activeApes.get(j);
@@ -4227,12 +4231,12 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         gameAudio.playNpcPlasma(pos);
     }
 
-    public void receiveNetworkPlayerBullet(UUID shooterID, Vector3f pos, Vector3f dir, boolean isPlasma)
+    public void receiveNetworkPlayerBullet(UUID shooterID, Vector3f pos, Vector3f dir, boolean isPlasma, int enemyDamage, int brainDamage)
     {
         if (!isHostClient)
             return;
 
-        bulletManager.spawnNetworkPlayerBullet(shooterID, pos, dir, isPlasma);
+        bulletManager.spawnNetworkPlayerBullet(shooterID, pos, dir, isPlasma, enemyDamage, brainDamage);
     }
     
     public void receiveCreditAward(int amount)

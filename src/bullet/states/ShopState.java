@@ -21,6 +21,12 @@ public class ShopState
     private static final float VENDING_WINDOW_DURATION = 15.0f;
     private static final float INTERACTION_DISTANCE = 5.0f;
     private static final float HIDDEN_SCALE = 0.0001f;
+    private static final int FULL_HEAL_COST = 50;
+    private static final int FULL_AMMO_COST = 150;
+    private static final int DAMAGE_UPGRADE_BASE_COST = 250;
+    private static final int DAMAGE_UPGRADE_COST_STEP = 150;
+    private static final int AMMO_UPGRADE_BASE_COST = 200;
+    private static final int AMMO_UPGRADE_COST_STEP = 100;
 
     private ObjShape vendingShape;
     private GameObject vendingMachine;
@@ -142,16 +148,24 @@ public class ShopState
                 buyFullAmmo(game, weapons);
                 break;
 
+            case KeyEvent.VK_3:
+                buyDamageUpgrade(game, weapons);
+                break;
+
+            case KeyEvent.VK_4:
+                buyAmmoUpgrade(game, weapons);
+                break;
+
             default:
                 break;
         }
     }
 
-    public void renderHud(Engine engine, int playerHealth, int playerCredits)
+    public void renderHud(Engine engine, int playerHealth, int playerCredits, WeaponInventory weapons)
     {
         if (shopOpen)
         {
-            renderShopHud(engine, playerCredits);
+            renderShopHud(engine, playerCredits, weapons);
             return;
         }
 
@@ -177,7 +191,7 @@ public class ShopState
         );
     }
 
-    private void renderShopHud(Engine engine, int playerCredits)
+    private void renderShopHud(Engine engine, int playerCredits, WeaponInventory weapons)
     {
         engine.getHUDmanager().setHUD1(
             "--- VENDING MACHINE SHOP --- Credits: $" + playerCredits,
@@ -187,14 +201,14 @@ public class ShopState
         );
 
         engine.getHUDmanager().setHUD2(
-            "[1] Full Heal ($50)  |  [2] Full Ammo ($150)",
+            "[1] Full Heal ($" + FULL_HEAL_COST + ")  |  [2] Full Ammo ($" + FULL_AMMO_COST + ")",
             new Vector3f(1, 1, 1),
             15,
             630
         );
 
         engine.getHUDmanager().setHUD3(
-            "Press E or ESC to exit shop",
+            "[3] " + getDamageUpgradeText(weapons) + "  |  [4] " + getAmmoUpgradeText(weapons) + "  |  E/ESC Exit",
             new Vector3f(1, 0, 0),
             15,
             600
@@ -203,14 +217,75 @@ public class ShopState
 
     private void buyFullHeal(MyGame game)
     {
-        if (game.getPlayerHealth() < game.getPlayerHealthMax() && game.spendPlayerCredits(50))
+        if (game.getPlayerHealth() < game.getPlayerHealthMax() && game.spendPlayerCredits(FULL_HEAL_COST))
             game.setPlayerHealth(game.getPlayerHealthMax());
     }
 
     private void buyFullAmmo(MyGame game, WeaponInventory weapons)
     {
-        if (game.spendPlayerCredits(150))
+        if (game.spendPlayerCredits(FULL_AMMO_COST))
             weapons.fillAllAmmo();
+    }
+
+    private void buyDamageUpgrade(MyGame game, WeaponInventory weapons)
+    {
+        if (weapons == null || weapons.isDamageUpgradeMaxed())
+            return;
+
+        if (game.spendPlayerCredits(getDamageUpgradeCost(weapons)))
+            weapons.upgradeDamageMultiplier();
+    }
+
+    private void buyAmmoUpgrade(MyGame game, WeaponInventory weapons)
+    {
+        if (weapons == null || weapons.isAmmoUpgradeMaxed())
+            return;
+
+        if (game.spendPlayerCredits(getAmmoUpgradeCost(weapons)))
+            weapons.upgradeAmmoMultiplier();
+    }
+
+    private String getDamageUpgradeText(WeaponInventory weapons)
+    {
+        if (weapons == null)
+            return "Damage Upgrade";
+
+        String levelText = "Damage x" + formatMultiplier(weapons.getDamageMultiplier()) +
+            " L" + weapons.getDamageUpgradeLevel() + "/" + WeaponInventory.MAX_DAMAGE_UPGRADE_LEVEL;
+
+        if (weapons.isDamageUpgradeMaxed())
+            return levelText + " MAX";
+
+        return levelText + " ($" + getDamageUpgradeCost(weapons) + ")";
+    }
+
+    private String getAmmoUpgradeText(WeaponInventory weapons)
+    {
+        if (weapons == null)
+            return "Ammo Upgrade";
+
+        String levelText = "Ammo x" + formatMultiplier(weapons.getAmmoMultiplier()) +
+            " L" + weapons.getAmmoUpgradeLevel() + "/" + WeaponInventory.MAX_AMMO_UPGRADE_LEVEL;
+
+        if (weapons.isAmmoUpgradeMaxed())
+            return levelText + " MAX";
+
+        return levelText + " ($" + getAmmoUpgradeCost(weapons) + ")";
+    }
+
+    private int getDamageUpgradeCost(WeaponInventory weapons)
+    {
+        return DAMAGE_UPGRADE_BASE_COST + (weapons.getDamageUpgradeLevel() * DAMAGE_UPGRADE_COST_STEP);
+    }
+
+    private int getAmmoUpgradeCost(WeaponInventory weapons)
+    {
+        return AMMO_UPGRADE_BASE_COST + (weapons.getAmmoUpgradeLevel() * AMMO_UPGRADE_COST_STEP);
+    }
+
+    private String formatMultiplier(float value)
+    {
+        return String.format(java.util.Locale.US, "%.2f", value);
     }
 
     private void hideVendingMachine()

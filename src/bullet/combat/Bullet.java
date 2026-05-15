@@ -13,13 +13,20 @@ public class Bullet {
     public boolean isPlasma;
     public boolean fromEnemy;
     public UUID ownerID;
+    public int enemyDamage;
+    public int brainDamage;
 
     public Bullet(GameObject obj, PhysicsObject phys, Vector3f velocity, float lifetime, boolean isPlasma, boolean fromEnemy)
     {
-        this(obj, phys, velocity, lifetime, isPlasma, fromEnemy, null);
+        this(obj, phys, velocity, lifetime, isPlasma, fromEnemy, null, 100, 20);
     }
 
     public Bullet(GameObject obj, PhysicsObject phys, Vector3f velocity, float lifetime, boolean isPlasma, boolean fromEnemy, UUID ownerID)
+    {
+        this(obj, phys, velocity, lifetime, isPlasma, fromEnemy, ownerID, 100, 20);
+    }
+
+    public Bullet(GameObject obj, PhysicsObject phys, Vector3f velocity, float lifetime, boolean isPlasma, boolean fromEnemy, UUID ownerID, int enemyDamage, int brainDamage)
     {
         this.obj = obj;
         this.phys = phys;
@@ -28,5 +35,7 @@ public class Bullet {
         this.isPlasma = isPlasma;
         this.fromEnemy = fromEnemy;
         this.ownerID = ownerID;
+        this.enemyDamage = enemyDamage;
+        this.brainDamage = brainDamage;
     }
 }
