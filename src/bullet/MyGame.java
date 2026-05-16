@@ -12,7 +12,6 @@ import org.joml.Math;
 import java.util.Random;
 
 // networking imports
-import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -42,6 +41,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private static Engine engine;
 
     private boolean isShuttingDown = false;
+    private boolean shutdownWindowHandlerInstalled = false;
     private GameState gameState = GameState.MENU;
     private final ShopState shopState = new ShopState();
     private int menuSelection = 0;
@@ -186,7 +186,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int serverPort;
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
-    private Process hostedServerProcess;
+    private GameServerUDP hostedServer;
     private boolean isClientConnected = false;
     private boolean isHostClient = false;
     private float networkUpdateTimer = 0.0f;
@@ -403,6 +403,74 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         if (protClient != null)
             protClient.processPackets();
+    }
+
+    @Override
+    public void shutdown()
+    {
+        super.shutdown();
+        shutdownNetworking();
+    }
+
+    private void shutdownNetworking()
+    {
+        if (protClient != null)
+        {
+            protClient.sendByeMessage();
+
+            try
+            {
+                protClient.shutdown();
+            }
+            catch (IOException e)
+            {
+                System.out.println("Error shutting down client connection: " + e.getMessage());
+            }
+
+            protClient = null;
+        }
+
+        if (hostedServer != null)
+        {
+            try
+            {
+                hostedServer.shutdown();
+            }
+            catch (IOException e)
+            {
+                System.out.println("Error shutting down hosted server: " + e.getMessage());
+            }
+
+            hostedServer = null;
+        }
+
+        isClientConnected = false;
+        isHostClient = false;
+        offlineMode = false;
+    }
+
+    private void installShutdownWindowHandler()
+    {
+        if (shutdownWindowHandlerInstalled || engine == null || engine.getRenderSystem() == null)
+            return;
+
+        shutdownWindowHandlerInstalled = true;
+        engine.getRenderSystem().setDefaultCloseOperation(javax.swing.JFrame.DO_NOTHING_ON_CLOSE);
+        engine.getRenderSystem().addWindowListener(new WindowAdapter()
+        {
+            @Override
+            public void windowClosing(WindowEvent e)
+            {
+                if (!isShuttingDown)
+                {
+                    isShuttingDown = true;
+                    gameAudio.releaseAll();
+                    shutdown();
+                }
+
+                System.exit(0);
+            }
+        });
     }
 
     private void initMouseMode()
@@ -2072,7 +2140,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     {
         multiplayerStatusText = "Hosting game...";
         serverProtocol = ProtocolType.UDP;
-        startServerBatchIfNeeded();
+        startHostedServerIfNeeded();
 
         if (setupNetworking("127.0.0.1", serverPort, true))
         {
@@ -2096,47 +2164,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         }
     }
 
-    private void startServerBatchIfNeeded()
+    private void startHostedServerIfNeeded()
     {
-        if (hostedServerProcess != null && hostedServerProcess.isAlive())
+        if (hostedServer != null || serverProtocol != ProtocolType.UDP)
             return;
 
         try
         {
-            File serverBatch = getServerBatchFile();
-            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", "server.bat");
-            pb.directory(serverBatch.getParentFile());
-            pb.redirectErrorStream(true);
-            pb.inheritIO();
-            hostedServerProcess = pb.start();
-            multiplayerStatusText = "Starting server on port " + serverPort;
-
-            try
-            {
-                Thread.sleep(750);
-            }
-            catch (InterruptedException e)
-            {
-                Thread.currentThread().interrupt();
-            }
+            hostedServer = new GameServerUDP(serverPort);
+            multiplayerStatusText = "Hosting on port " + serverPort;
         }
         catch (IOException e)
         {
             multiplayerStatusText = "Using existing server on port " + serverPort;
-            System.out.println("Could not start server.bat, trying to connect instead: " + e.getMessage());
+            System.out.println("Could not start local server, trying to connect instead: " + e.getMessage());
         }
-    }
-
-    private File getServerBatchFile() throws IOException
-    {
-        File serverBatch = new File("server.bat");
-        if (!serverBatch.exists())
-            serverBatch = new File("src", "server.bat");
-
-        if (!serverBatch.exists())
-            throw new IOException("server.bat not found");
-
-        return serverBatch.getCanonicalFile();
     }
 
     private void beginFireInput()
@@ -2522,6 +2564,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         System.out.println("=== initializeGame() reached ===");
 
         createViewports();
+        installShutdownWindowHandler();
 
         cam = engine.getRenderSystem().getViewport("MAIN").getCamera();
         camOver = engine.getRenderSystem().getViewport("OVERHEAD").getCamera();
