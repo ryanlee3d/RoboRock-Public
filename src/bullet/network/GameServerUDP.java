@@ -1,7 +1,11 @@
 package bullet.network;
 
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 
@@ -13,6 +17,9 @@ import tage.networking.IGameConnection.ProtocolType;
 
 public class GameServerUDP extends GameConnectionServer<UUID>
 {
+    private static final String DISCOVERY_REQUEST = "BULLET_DISCOVER_SERVER";
+    private static final String DISCOVERY_RESPONSE = "BULLET_SERVER_HERE";
+
     // Tracks the latest known position for each connected client so late joiners
     // can be sent ghosts for players who were already in the session.
     private Map<UUID, Vector3f> clientPositions;
@@ -20,6 +27,9 @@ public class GameServerUDP extends GameConnectionServer<UUID>
     private Map<UUID, Float> clientYaws;
     private Map<UUID, Integer> clientWeaponSelections;
     private UUID hostClientID = null;
+    private DatagramSocket discoverySocket;
+    private Thread discoveryThread;
+    private volatile boolean discoveryRunning = false;
 
     public GameServerUDP(int localPort) throws IOException
     {
@@ -29,6 +39,95 @@ public class GameServerUDP extends GameConnectionServer<UUID>
         clientYaws = new java.util.concurrent.ConcurrentHashMap<>();
         clientWeaponSelections = new java.util.concurrent.ConcurrentHashMap<>();
         System.out.println("UDP server started on port " + localPort);
+        startDiscoveryResponder(localPort);
+    }
+
+    private void startDiscoveryResponder(int gamePort)
+    {
+        if (discoveryRunning)
+            return;
+
+        discoveryRunning = true;
+        discoveryThread = new Thread(() -> runDiscoveryResponder(gamePort), "BulletServerDiscovery");
+        discoveryThread.setDaemon(true);
+        discoveryThread.start();
+    }
+
+    private void runDiscoveryResponder(int gamePort)
+    {
+        int discoveryPort = gamePort + 1;
+
+        try
+        {
+            discoverySocket = new DatagramSocket(discoveryPort);
+            byte[] buffer = new byte[256];
+            System.out.println("UDP discovery responder started on port " + discoveryPort);
+
+            while (discoveryRunning)
+            {
+                DatagramPacket request = new DatagramPacket(buffer, buffer.length);
+                discoverySocket.receive(request);
+
+                String message = new String(
+                    request.getData(),
+                    request.getOffset(),
+                    request.getLength(),
+                    StandardCharsets.UTF_8
+                );
+
+                if (!DISCOVERY_REQUEST.equals(message))
+                    continue;
+
+                byte[] responseData = (DISCOVERY_RESPONSE + "," + gamePort).getBytes(StandardCharsets.UTF_8);
+                DatagramPacket response = new DatagramPacket(
+                    responseData,
+                    responseData.length,
+                    request.getAddress(),
+                    request.getPort()
+                );
+                discoverySocket.send(response);
+            }
+        }
+        catch (SocketException e)
+        {
+            if (discoveryRunning)
+                System.out.println("Server discovery responder unavailable: " + e.getMessage());
+        }
+        catch (IOException e)
+        {
+            if (discoveryRunning)
+                System.out.println("Server discovery responder stopped: " + e.getMessage());
+        }
+        finally
+        {
+            if (discoverySocket != null)
+            {
+                discoverySocket.close();
+                discoverySocket = null;
+            }
+
+            discoveryRunning = false;
+        }
+    }
+
+    private void stopDiscoveryResponder()
+    {
+        discoveryRunning = false;
+
+        if (discoverySocket != null)
+        {
+            discoverySocket.close();
+            discoverySocket = null;
+        }
+
+        discoveryThread = null;
+    }
+
+    @Override
+    public void shutdown() throws IOException
+    {
+        stopDiscoveryResponder();
+        super.shutdown();
     }
 
     @Override

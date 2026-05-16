@@ -188,9 +188,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
     private GameServerUDP hostedServer;
-    private DatagramSocket discoverySocket;
-    private Thread discoveryThread;
-    private volatile boolean discoveryRunning = false;
     private boolean isClientConnected = false;
     private boolean isHostClient = false;
     private float networkUpdateTimer = 0.0f;
@@ -421,8 +418,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void shutdownNetworking()
     {
-        stopDiscoveryResponder();
-
         if (protClient != null)
         {
             protClient.sendByeMessage();
@@ -2150,7 +2145,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         multiplayerStatusText = "Hosting game...";
         serverProtocol = ProtocolType.UDP;
         startHostedServerIfNeeded();
-        startDiscoveryResponder();
 
         if (setupNetworking("127.0.0.1", serverPort, true))
         {
@@ -2164,16 +2158,21 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         multiplayerStatusText = "Searching for hosted game...";
 
         ServerDiscoveryResult discoveredServer = discoverHostedServer();
-        if (discoveredServer == null)
+        String joinAddress = serverAddress;
+        int joinPort = serverPort;
+
+        if (discoveredServer != null)
         {
-            multiplayerStatusText = "No hosted game found on this network";
-            gameState = GameState.MULTIPLAYER_MENU;
-            return;
+            joinAddress = discoveredServer.address;
+            joinPort = discoveredServer.port;
+            multiplayerStatusText = "Joining discovered server " + joinAddress + ":" + joinPort;
+        }
+        else
+        {
+            multiplayerStatusText = "Discovery failed; joining configured server " + joinAddress + ":" + joinPort;
         }
 
-        multiplayerStatusText = "Joining " + discoveredServer.address + ":" + discoveredServer.port;
-
-        if (setupNetworking(discoveredServer.address, discoveredServer.port, false))
+        if (setupNetworking(joinAddress, joinPort, false))
         {
             gameState = GameState.ROBOT_SELECT;
             applyAvatarSelectionTexture();
@@ -2204,84 +2203,6 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private int getDiscoveryPort()
     {
         return serverPort + 1;
-    }
-
-    private void startDiscoveryResponder()
-    {
-        if (discoveryRunning)
-            return;
-
-        discoveryRunning = true;
-        discoveryThread = new Thread(() -> runDiscoveryResponder(), "BulletServerDiscovery");
-        discoveryThread.setDaemon(true);
-        discoveryThread.start();
-    }
-
-    private void runDiscoveryResponder()
-    {
-        try
-        {
-            discoverySocket = new DatagramSocket(getDiscoveryPort());
-            byte[] buffer = new byte[256];
-
-            while (discoveryRunning)
-            {
-                DatagramPacket request = new DatagramPacket(buffer, buffer.length);
-                discoverySocket.receive(request);
-
-                String message = new String(
-                    request.getData(),
-                    request.getOffset(),
-                    request.getLength(),
-                    StandardCharsets.UTF_8
-                );
-
-                if (!DISCOVERY_REQUEST.equals(message))
-                    continue;
-
-                byte[] responseData = (DISCOVERY_RESPONSE + "," + serverPort).getBytes(StandardCharsets.UTF_8);
-                DatagramPacket response = new DatagramPacket(
-                    responseData,
-                    responseData.length,
-                    request.getAddress(),
-                    request.getPort()
-                );
-                discoverySocket.send(response);
-            }
-        }
-        catch (SocketException e)
-        {
-            if (discoveryRunning)
-                System.out.println("Server discovery responder unavailable: " + e.getMessage());
-        }
-        catch (IOException e)
-        {
-            if (discoveryRunning)
-                System.out.println("Server discovery responder stopped: " + e.getMessage());
-        }
-        finally
-        {
-            if (discoverySocket != null)
-            {
-                discoverySocket.close();
-                discoverySocket = null;
-            }
-
-            discoveryRunning = false;
-        }
-    }
-
-    private void stopDiscoveryResponder()
-    {
-        discoveryRunning = false;
-
-        if (discoverySocket != null)
-        {
-            discoverySocket.close();
-            discoverySocket = null;
-        }
-
-        discoveryThread = null;
     }
 
     private ServerDiscoveryResult discoverHostedServer()

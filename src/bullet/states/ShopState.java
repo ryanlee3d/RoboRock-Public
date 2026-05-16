@@ -13,10 +13,11 @@ import tage.ObjShape;
 import tage.TextureImage;
 import tage.physics.PhysicsObject;
 import tage.shapes.Cube;
+import tage.shapes.ImportedModel;
 
 public class ShopState
 {
-    public static final float VENDING_TERRAIN_Y_OFFSET = 1.25f;
+    public static final float VENDING_TERRAIN_Y_OFFSET = 0.5f;
 
     private static final float VENDING_WINDOW_DURATION = 15.0f;
     private static final float INTERACTION_DISTANCE = 5.0f;
@@ -29,15 +30,21 @@ public class ShopState
     private static final int AMMO_UPGRADE_COST_STEP = 100;
 
     private ObjShape vendingShape;
+    private TextureImage vendingTexture;
     private GameObject vendingMachine;
 
     private float shopTimer = 0.0f;
     private boolean vendingActive = false;
     private boolean shopOpen = false;
 
+    public void loadTexture()
+    {
+        vendingTexture = new TextureImage("uv_checker_material_uv_grid_2048x2048_Roug.png");
+    }
+
     public void loadShape()
     {
-        vendingShape = new Cube();
+        vendingShape = new ImportedModel("Terminal UV_1.obj");
     }
 
     public void buildObjects(TextureImage vendingTexture)
@@ -45,7 +52,11 @@ public class ShopState
         if (vendingShape == null)
             loadShape();
 
-        vendingMachine = new GameObject(GameObject.root(), vendingShape, vendingTexture);
+        if (this.vendingTexture == null)
+            loadTexture();
+
+        TextureImage texture = this.vendingTexture != null ? this.vendingTexture : vendingTexture;
+        vendingMachine = new GameObject(GameObject.root(), vendingShape, texture);
         hideVendingMachine();
     }
 
@@ -79,7 +90,7 @@ public class ShopState
         );
 
         vendingMachine.setLocalScale(
-            new Matrix4f().scaling(1.5f, 2.5f, 1.5f)
+            new Matrix4f().scaling(1f, 1f, 1f)
         );
 
         shopTimer = VENDING_WINDOW_DURATION;
