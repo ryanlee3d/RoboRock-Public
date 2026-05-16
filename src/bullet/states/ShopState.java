@@ -188,7 +188,7 @@ public class ShopState
         );
 
         engine.getHUDmanager().setHUD2(
-            "Press E near the vending machine to shop",
+            "Press E near the Terminal to shop",
             new Vector3f(1, 1, 1),
             15,
             630
@@ -205,7 +205,7 @@ public class ShopState
     private void renderShopHud(Engine engine, int playerCredits, WeaponInventory weapons)
     {
         engine.getHUDmanager().setHUD1(
-            "--- VENDING MACHINE SHOP --- Credits: $" + playerCredits,
+            "--- TERMINAL SHOP --- Credits: $" + playerCredits,
             new Vector3f(1, 1, 0),
             15,
             660

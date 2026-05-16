@@ -2213,6 +2213,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
             socket.setSoTimeout(DISCOVERY_TIMEOUT_MS);
 
             byte[] requestData = DISCOVERY_REQUEST.getBytes(StandardCharsets.UTF_8);
+            sendDiscoveryRequest(socket, requestData, InetAddress.getLoopbackAddress());
             sendDiscoveryRequest(socket, requestData, InetAddress.getByName("255.255.255.255"));
             sendDiscoveryRequestsToNetworkBroadcasts(socket, requestData);
 
