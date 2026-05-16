@@ -2338,7 +2338,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 for (InterfaceAddress interfaceAddress : networkInterface.getInterfaceAddresses())
                 {
                     InetAddress broadcast = interfaceAddress.getBroadcast();
-                    if (broadcast != null)
+                    if (isUsableBroadcastAddress(broadcast))
                         sendDiscoveryRequest(socket, requestData, broadcast);
                 }
             }
@@ -2347,6 +2347,13 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             System.out.println("Could not enumerate broadcast addresses: " + e.getMessage());
         }
+    }
+
+    private boolean isUsableBroadcastAddress(InetAddress address)
+    {
+        return address != null &&
+            address instanceof Inet4Address &&
+            !address.isAnyLocalAddress();
     }
 
     private void sendDiscoveryRequest(DatagramSocket socket, byte[] requestData, InetAddress address)
