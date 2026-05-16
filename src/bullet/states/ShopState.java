@@ -28,6 +28,7 @@ public class ShopState
     private static final int DAMAGE_UPGRADE_COST_STEP = 150;
     private static final int AMMO_UPGRADE_BASE_COST = 200;
     private static final int AMMO_UPGRADE_COST_STEP = 100;
+    private static final int SHOP_ITEM_COUNT = 4;
 
     private ObjShape vendingShape;
     private TextureImage vendingTexture;
@@ -36,6 +37,7 @@ public class ShopState
     private float shopTimer = 0.0f;
     private boolean vendingActive = false;
     private boolean shopOpen = false;
+    private int selectedShopIndex = 0;
 
     public void loadTexture()
     {
@@ -96,6 +98,7 @@ public class ShopState
         shopTimer = VENDING_WINDOW_DURATION;
         vendingActive = true;
         shopOpen = false;
+        selectedShopIndex = 0;
     }
 
     public boolean update(float dt)
@@ -124,6 +127,7 @@ public class ShopState
             return false;
 
         shopOpen = true;
+        selectedShopIndex = 0;
 
         if (shopOpen)
         {
@@ -142,6 +146,21 @@ public class ShopState
         shopOpen = false;
     }
 
+    public void moveSelectionUp()
+    {
+        selectedShopIndex = (selectedShopIndex - 1 + SHOP_ITEM_COUNT) % SHOP_ITEM_COUNT;
+    }
+
+    public void moveSelectionDown()
+    {
+        selectedShopIndex = (selectedShopIndex + 1) % SHOP_ITEM_COUNT;
+    }
+
+    public void activateSelectedItem(MyGame game, WeaponInventory weapons)
+    {
+        buyShopItem(selectedShopIndex, game, weapons);
+    }
+
     public void handleShopKey(int keyCode, MyGame game, WeaponInventory weapons)
     {
         switch (keyCode)
@@ -151,20 +170,32 @@ public class ShopState
                 closeShop();
                 break;
 
+            case KeyEvent.VK_UP:
+                moveSelectionUp();
+                break;
+
+            case KeyEvent.VK_DOWN:
+                moveSelectionDown();
+                break;
+
+            case KeyEvent.VK_ENTER:
+                activateSelectedItem(game, weapons);
+                break;
+
             case KeyEvent.VK_1:
-                buyFullHeal(game);
+                buyShopItem(0, game, weapons);
                 break;
 
             case KeyEvent.VK_2:
-                buyFullAmmo(game, weapons);
+                buyShopItem(1, game, weapons);
                 break;
 
             case KeyEvent.VK_3:
-                buyDamageUpgrade(game, weapons);
+                buyShopItem(2, game, weapons);
                 break;
 
             case KeyEvent.VK_4:
-                buyAmmoUpgrade(game, weapons);
+                buyShopItem(3, game, weapons);
                 break;
 
             default:
@@ -212,18 +243,59 @@ public class ShopState
         );
 
         engine.getHUDmanager().setHUD2(
-            "[1] Full Heal ($" + FULL_HEAL_COST + ")  |  [2] Full Ammo ($" + FULL_AMMO_COST + ")",
+            getShopItemText(0, "Full Heal ($" + FULL_HEAL_COST + ")") +
+                "  |  " +
+                getShopItemText(1, "Full Ammo ($" + FULL_AMMO_COST + ")"),
             new Vector3f(1, 1, 1),
             15,
             630
         );
 
         engine.getHUDmanager().setHUD3(
-            "[3] " + getDamageUpgradeText(weapons) + "  |  [4] " + getAmmoUpgradeText(weapons) + "  |  E/ESC Exit",
+            getShopItemText(2, getDamageUpgradeText(weapons)) +
+                "  |  " +
+                getShopItemText(3, getAmmoUpgradeText(weapons)) +
+                "  |  Enter/A Buy  B/E/ESC Exit",
             new Vector3f(1, 0, 0),
             15,
             600
         );
+    }
+
+    private String getShopItemText(int index, String text)
+    {
+        String label = "[" + (index + 1) + "] " + text;
+        if (index == selectedShopIndex)
+            return "> " + label + " <";
+
+        return label;
+    }
+
+    private void buyShopItem(int index, MyGame game, WeaponInventory weapons)
+    {
+        selectedShopIndex = index;
+
+        switch (index)
+        {
+            case 0:
+                buyFullHeal(game);
+                break;
+
+            case 1:
+                buyFullAmmo(game, weapons);
+                break;
+
+            case 2:
+                buyDamageUpgrade(game, weapons);
+                break;
+
+            case 3:
+                buyAmmoUpgrade(game, weapons);
+                break;
+
+            default:
+                break;
+        }
     }
 
     private void buyFullHeal(MyGame game)
@@ -303,6 +375,7 @@ public class ShopState
     {
         vendingActive = false;
         shopOpen = false;
+        selectedShopIndex = 0;
 
         if (vendingMachine != null)
         {

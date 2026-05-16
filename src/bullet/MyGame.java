@@ -2418,7 +2418,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         @Override
         public void performAction(float time, net.java.games.input.Event e)
         {
-            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            if (isButtonPressed(e) && gameState == GameState.PLAYING && !shopState.isShopOpen())
                 weaponInventory.beginReload();
         }
     }
@@ -2429,7 +2429,18 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         public void performAction(float time, net.java.games.input.Event e)
         {
             if (isButtonPressed(e) && gameState == GameState.PLAYING)
-                startPlayerGrapple();
+            {
+                if (shopState.isShopOpen())
+                {
+                    exitVendingShopView();
+                    return;
+                }
+
+                if (shopState.tryToggleShop(player, playerP, currentMoveDir))
+                    enterVendingShopView();
+                else
+                    startPlayerGrapple();
+            }
         }
     }
 
@@ -2438,7 +2449,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         @Override
         public void performAction(float time, net.java.games.input.Event e)
         {
-            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            if (isButtonPressed(e) && gameState == GameState.PLAYING && !shopState.isShopOpen())
             {
                 weaponInventory.selectNext();
                 updateWeaponVisibility();
@@ -2451,7 +2462,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         @Override
         public void performAction(float time, net.java.games.input.Event e)
         {
-            if (isButtonPressed(e) && gameState == GameState.PLAYING)
+            if (isButtonPressed(e) && gameState == GameState.PLAYING && !shopState.isShopOpen())
             {
                 weaponInventory.selectPrevious();
                 updateWeaponVisibility();
@@ -2472,27 +2483,33 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
                 return;
             }
 
-        if (gameState == GameState.MENU)
-        {
-            activateCurrentMenuSelection();
-            return;
-        }
+            if (shopState.isShopOpen())
+            {
+                shopState.activateSelectedItem(MyGame.this, weaponInventory);
+                return;
+            }
 
-        if (gameState == GameState.MULTIPLAYER_MENU)
-        {
-            if (menu.getSelectedMultiplayerIndex() == 0)
-                beginHostGame();
-            else
-                beginJoinGame();
+            if (gameState == GameState.MENU)
+            {
+                activateCurrentMenuSelection();
+                return;
+            }
 
-            return;
-        }
+            if (gameState == GameState.MULTIPLAYER_MENU)
+            {
+                if (menu.getSelectedMultiplayerIndex() == 0)
+                    beginHostGame();
+                else
+                    beginJoinGame();
 
-        if (gameState == GameState.ROBOT_SELECT)
-        {
-            startSelectedGame();
-            return;
-        }
+                return;
+            }
+
+            if (gameState == GameState.ROBOT_SELECT)
+            {
+                startSelectedGame();
+                return;
+            }
         }
     }
 
@@ -2522,6 +2539,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
                 if (v < 0.0f) menu.moveMultiplayerUp();
                 else menu.moveMultiplayerDown();
+
+                return;
+            }
+
+            if (shopState.isShopOpen())
+            {
+                if (!acceptGamepadMenuInput()) return;
+
+                if (v < 0.0f) shopState.moveSelectionUp();
+                else shopState.moveSelectionDown();
 
                 return;
             }
