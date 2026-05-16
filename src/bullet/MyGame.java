@@ -13,9 +13,10 @@ import java.util.Random;
 
 // networking imports
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
 import tage.networking.IGameConnection.ProtocolType;
+import java.util.Enumeration;
 import java.util.UUID;
 
 // physics imports
@@ -187,10 +188,16 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
     private ProtocolType serverProtocol;
     private ProtocolClient protClient;
     private GameServerUDP hostedServer;
+    private DatagramSocket discoverySocket;
+    private Thread discoveryThread;
+    private volatile boolean discoveryRunning = false;
     private boolean isClientConnected = false;
     private boolean isHostClient = false;
     private float networkUpdateTimer = 0.0f;
     private static final float NETWORK_UPDATE_INTERVAL = 0.05f;
+    private static final String DISCOVERY_REQUEST = "BULLET_DISCOVER_SERVER";
+    private static final String DISCOVERY_RESPONSE = "BULLET_SERVER_HERE";
+    private static final int DISCOVERY_TIMEOUT_MS = 1500;
     private NetworkEnemyManager networkEnemyManager;
     private float enemyNetworkUpdateTimer = 0.0f;
     private static final float ENEMY_NETWORK_UPDATE_INTERVAL = 0.10f;
@@ -414,6 +421,8 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void shutdownNetworking()
     {
+        stopDiscoveryResponder();
+
         if (protClient != null)
         {
             protClient.sendByeMessage();
@@ -2141,6 +2150,7 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         multiplayerStatusText = "Hosting game...";
         serverProtocol = ProtocolType.UDP;
         startHostedServerIfNeeded();
+        startDiscoveryResponder();
 
         if (setupNetworking("127.0.0.1", serverPort, true))
         {
@@ -2151,9 +2161,19 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
 
     private void beginJoinGame()
     {
-        multiplayerStatusText = "Joining game...";
+        multiplayerStatusText = "Searching for hosted game...";
 
-        if (setupNetworking(serverAddress, serverPort, false))
+        ServerDiscoveryResult discoveredServer = discoverHostedServer();
+        if (discoveredServer == null)
+        {
+            multiplayerStatusText = "No hosted game found on this network";
+            gameState = GameState.MULTIPLAYER_MENU;
+            return;
+        }
+
+        multiplayerStatusText = "Joining " + discoveredServer.address + ":" + discoveredServer.port;
+
+        if (setupNetworking(discoveredServer.address, discoveredServer.port, false))
         {
             gameState = GameState.ROBOT_SELECT;
             applyAvatarSelectionTexture();
@@ -2178,6 +2198,179 @@ public class MyGame extends VariableFrameRateGame implements MouseMotionListener
         {
             multiplayerStatusText = "Using existing server on port " + serverPort;
             System.out.println("Could not start local server, trying to connect instead: " + e.getMessage());
+        }
+    }
+
+    private int getDiscoveryPort()
+    {
+        return serverPort + 1;
+    }
+
+    private void startDiscoveryResponder()
+    {
+        if (discoveryRunning)
+            return;
+
+        discoveryRunning = true;
+        discoveryThread = new Thread(() -> runDiscoveryResponder(), "BulletServerDiscovery");
+        discoveryThread.setDaemon(true);
+        discoveryThread.start();
+    }
+
+    private void runDiscoveryResponder()
+    {
+        try
+        {
+            discoverySocket = new DatagramSocket(getDiscoveryPort());
+            byte[] buffer = new byte[256];
+
+            while (discoveryRunning)
+            {
+                DatagramPacket request = new DatagramPacket(buffer, buffer.length);
+                discoverySocket.receive(request);
+
+                String message = new String(
+                    request.getData(),
+                    request.getOffset(),
+                    request.getLength(),
+                    StandardCharsets.UTF_8
+                );
+
+                if (!DISCOVERY_REQUEST.equals(message))
+                    continue;
+
+                byte[] responseData = (DISCOVERY_RESPONSE + "," + serverPort).getBytes(StandardCharsets.UTF_8);
+                DatagramPacket response = new DatagramPacket(
+                    responseData,
+                    responseData.length,
+                    request.getAddress(),
+                    request.getPort()
+                );
+                discoverySocket.send(response);
+            }
+        }
+        catch (SocketException e)
+        {
+            if (discoveryRunning)
+                System.out.println("Server discovery responder unavailable: " + e.getMessage());
+        }
+        catch (IOException e)
+        {
+            if (discoveryRunning)
+                System.out.println("Server discovery responder stopped: " + e.getMessage());
+        }
+        finally
+        {
+            if (discoverySocket != null)
+            {
+                discoverySocket.close();
+                discoverySocket = null;
+            }
+
+            discoveryRunning = false;
+        }
+    }
+
+    private void stopDiscoveryResponder()
+    {
+        discoveryRunning = false;
+
+        if (discoverySocket != null)
+        {
+            discoverySocket.close();
+            discoverySocket = null;
+        }
+
+        discoveryThread = null;
+    }
+
+    private ServerDiscoveryResult discoverHostedServer()
+    {
+        try (DatagramSocket socket = new DatagramSocket())
+        {
+            socket.setBroadcast(true);
+            socket.setSoTimeout(DISCOVERY_TIMEOUT_MS);
+
+            byte[] requestData = DISCOVERY_REQUEST.getBytes(StandardCharsets.UTF_8);
+            sendDiscoveryRequest(socket, requestData, InetAddress.getByName("255.255.255.255"));
+            sendDiscoveryRequestsToNetworkBroadcasts(socket, requestData);
+
+            byte[] buffer = new byte[256];
+            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
+            socket.receive(response);
+
+            String message = new String(
+                response.getData(),
+                response.getOffset(),
+                response.getLength(),
+                StandardCharsets.UTF_8
+            );
+
+            String[] parts = message.split(",");
+            if (parts.length < 2 || !DISCOVERY_RESPONSE.equals(parts[0]))
+                return null;
+
+            int discoveredPort = Integer.parseInt(parts[1]);
+            return new ServerDiscoveryResult(response.getAddress().getHostAddress(), discoveredPort);
+        }
+        catch (SocketTimeoutException e)
+        {
+            return null;
+        }
+        catch (IOException | NumberFormatException e)
+        {
+            System.out.println("Server discovery failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private void sendDiscoveryRequestsToNetworkBroadcasts(DatagramSocket socket, byte[] requestData)
+    {
+        try
+        {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements())
+            {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (!networkInterface.isUp() || networkInterface.isLoopback())
+                    continue;
+
+                for (InterfaceAddress interfaceAddress : networkInterface.getInterfaceAddresses())
+                {
+                    InetAddress broadcast = interfaceAddress.getBroadcast();
+                    if (broadcast != null)
+                        sendDiscoveryRequest(socket, requestData, broadcast);
+                }
+            }
+        }
+        catch (SocketException e)
+        {
+            System.out.println("Could not enumerate broadcast addresses: " + e.getMessage());
+        }
+    }
+
+    private void sendDiscoveryRequest(DatagramSocket socket, byte[] requestData, InetAddress address)
+    {
+        try
+        {
+            DatagramPacket request = new DatagramPacket(requestData, requestData.length, address, getDiscoveryPort());
+            socket.send(request);
+        }
+        catch (IOException e)
+        {
+            System.out.println("Could not send discovery request to " + address.getHostAddress() + ": " + e.getMessage());
+        }
+    }
+
+    private static class ServerDiscoveryResult
+    {
+        final String address;
+        final int port;
+
+        ServerDiscoveryResult(String address, int port)
+        {
+            this.address = address;
+            this.port = port;
         }
     }
 
