@@ -12,7 +12,7 @@ public class MainMenu
         QUIT
     }
 
-    private final String title = "TITLE";
+    private final String title = "Robo-Rock";
 
     private final String[] menuItems = {
         "Play Game",
