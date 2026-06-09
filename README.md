@@ -9,6 +9,7 @@ Using TAGE: Another Tiny Game Engine developed by Professor Scott Gordon with he
 3. run.bat  
 Games on the same local network can run multiplayer. Select Host on the first game and then Join on consecutive games.
 
+Watch a demo here: [https://www.youtube.com/watch?v=0ycpejxl0us](https://www.youtube.com/watch?v=0ycpejxl0us)
 <img width="1263" height="708" alt="Screenshot 2026-05-13 213936" src="https://github.com/user-attachments/assets/e87c6830-d1f8-43f9-9308-5ba3c49aab3e" />
 <img width="1263" height="706" alt="Screenshot 2026-05-13 223348" src="https://github.com/user-attachments/assets/25b94df6-aca7-4115-a538-a441a1adcefd" />
 <img width="1256" height="707" alt="Screenshot 2026-05-13 214005" src="https://github.com/user-attachments/assets/c0a0b089-eb73-4859-9fc6-11e902e98744" />
